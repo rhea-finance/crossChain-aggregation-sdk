@@ -1,11 +1,4 @@
 /**
- * Adapter interface definitions
- * These interfaces abstract project-specific dependencies to make the SDK independent
- */
-
-import { TokenInfo } from "../types";
-
-/**
  * FindPath API response format
  */
 export interface FindPathResponse {

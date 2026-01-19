@@ -13,7 +13,6 @@ import {
 } from "../utils";
 import { logger } from "../utils/logger";
 import { IntentsQuotationAdapter } from "../adapters/types";
-import { NearSmartRouter } from "../chains/near/NearSmartRouter";
 
 export interface CompleteQuoteParams {
   sourceToken: TokenInfo;
@@ -62,7 +61,7 @@ export async function completeQuote(
     sourceToken,
     targetToken,
     sourceChain,
-    targetChain,
+    targetChain: _targetChain, // Reserved for future use
     amountIn,
     slippage,
     recipient,
