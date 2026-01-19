@@ -1,0 +1,52 @@
+{
+  "name": "@rhea-finance/cross-chain-aggregation-dex",
+  "version": "1.0.0",
+  "description": "Cross-chain DEX aggregation SDK for multi-chain token swaps and routing",
+  "main": "dist/index.js",
+  "module": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src --ext .ts",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "defi",
+    "dex",
+    "aggregator",
+    "router",
+    "swap",
+    "cross-chain",
+    "near",
+    "multi-chain",
+    "rhea-finance"
+  ],
+  "author": "Rhea Finance",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rhea-finance/crossChain-aggregation-dex.git"
+  },
+  "dependencies": {
+    "big.js": "^6.1.1"
+  },
+  "devDependencies": {
+    "@types/big.js": "^6.1.2",
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^9.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {},
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

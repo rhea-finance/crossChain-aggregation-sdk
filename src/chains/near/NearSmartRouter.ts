@@ -1,0 +1,359 @@
+/**
+ * Near chain DEX aggregator implementation
+ */
+
+import Big from "big.js";
+import {
+  QuoteParams,
+  QuoteResult,
+  ExecuteParams,
+  ExecuteResult,
+  Route,
+  DexRouter,
+} from "../../types";
+import {
+  normalizeTokenId,
+  convertSlippageToBasisPoints,
+} from "../../utils";
+import {
+  FindPathAdapter,
+  NearChainAdapter,
+  ConfigAdapter,
+} from "../../adapters/types";
+
+export interface NearSmartRouterConfig {
+  findPathAdapter: FindPathAdapter;
+  nearChainAdapter: NearChainAdapter;
+  configAdapter: ConfigAdapter;
+}
+
+export class NearSmartRouter implements DexRouter {
+  private findPathAdapter: FindPathAdapter;
+  private nearChainAdapter: NearChainAdapter;
+  private configAdapter: ConfigAdapter;
+  private wrapNearContractId: string;
+  private refExchangeId: string;
+  private tokenStorageDepositRead: string;
+
+  constructor(config: NearSmartRouterConfig) {
+    this.findPathAdapter = config.findPathAdapter;
+    this.nearChainAdapter = config.nearChainAdapter;
+    this.configAdapter = config.configAdapter;
+    this.wrapNearContractId = this.configAdapter.getWrapNearContractId();
+    this.refExchangeId = this.configAdapter.getRefExchangeId();
+    this.tokenStorageDepositRead =
+      this.configAdapter.getTokenStorageDepositRead?.() || "1250000000000000000000";
+  }
+
+  /**
+   * Get quote for token swap
+   */
+  async quote(params: QuoteParams): Promise<QuoteResult> {
+    try {
+      const {
+        tokenIn,
+        tokenOut,
+        amountIn,
+        slippage,
+        swapType = "EXACT_INPUT",
+      } = params;
+
+      // Validate parameters
+      if (!tokenIn?.address || !tokenOut?.address) {
+        return {
+          success: false,
+          tokenIn: params.tokenIn,
+          tokenOut: params.tokenOut,
+          amountIn: params.amountIn,
+          amountOut: "0",
+          minAmountOut: "0",
+          routes: [],
+          error: "Missing token address",
+        };
+      }
+
+      // Normalize token IDs
+      const normalizedTokenIn = normalizeTokenId(
+        tokenIn.address,
+        this.wrapNearContractId
+      );
+      const normalizedTokenOut = normalizeTokenId(
+        tokenOut.address,
+        this.wrapNearContractId
+      );
+
+      // Validate normalized addresses
+      if (!normalizedTokenIn || !normalizedTokenOut) {
+        console.error("🔍 SmartRouter quote - Invalid token addresses:", {
+          tokenIn: {
+            original: tokenIn.address,
+            normalized: normalizedTokenIn,
+          },
+          tokenOut: {
+            original: tokenOut.address,
+            normalized: normalizedTokenOut,
+          },
+        });
+        return {
+          success: false,
+          tokenIn: params.tokenIn,
+          tokenOut: params.tokenOut,
+          amountIn: params.amountIn,
+          amountOut: "0",
+          minAmountOut: "0",
+          routes: [],
+          error: `Invalid token address: tokenIn=${
+            normalizedTokenIn || "empty"
+          }, tokenOut=${normalizedTokenOut || "empty"}`,
+        };
+      }
+
+      // Convert slippage to basis points
+      const slippageBps = convertSlippageToBasisPoints(slippage);
+      const slippageDecimalForApi = slippageBps / 10000;
+
+      console.log("🔍 SmartRouter quote - Calling findPath:", {
+        tokenIn: normalizedTokenIn,
+        tokenOut: normalizedTokenOut,
+        amountIn,
+        slippage: slippageDecimalForApi,
+        slippageBps,
+      });
+
+      // Call findPath API
+      const response = await this.findPathAdapter.findPath({
+        tokenIn: normalizedTokenIn,
+        tokenOut: normalizedTokenOut,
+        amountIn: String(amountIn),
+        slippage: slippageDecimalForApi,
+        supportLedger: false,
+      });
+
+      console.log("🔍 SmartRouter quote - findPath response:", {
+        result_code: response?.result_code,
+        result_msg: response?.result_msg || response?.result_message,
+        hasRoutes: !!response?.result_data?.routes?.length,
+      });
+
+      // Check response
+      if (
+        response?.result_code !== 0 ||
+        !response?.result_data?.routes?.length
+      ) {
+        return {
+          success: false,
+          tokenIn,
+          tokenOut,
+          amountIn,
+          amountOut: "0",
+          minAmountOut: "0",
+          routes: [],
+          error: response?.result_msg || response?.result_message || "No route found",
+        };
+      }
+
+      const { routes: serverRoutes, amount_out } = response.result_data;
+      const slippageDecimal = new Big(slippageBps).div(10000);
+
+      // Transform route format
+      const routes: Route[] = serverRoutes.map((route: any) => ({
+        pools: route.pools.map((pool: any) => ({
+          pool_id: Number(pool.pool_id),
+          token_in: pool.token_in || normalizedTokenIn,
+          token_out: pool.token_out || normalizedTokenOut,
+          amount_in: pool.amount_in,
+          amount_out: pool.amount_out,
+          fee: pool.fee,
+        })),
+        amountIn: amountIn,
+        amountOut: route.amount_out || amount_out || "0",
+      }));
+
+      // Calculate minimum output (considering slippage)
+      const amountOut = new Big(amount_out || 0);
+      const minAmountOut = amountOut
+        .mul(new Big(1).minus(slippageDecimal))
+        .toFixed(0, Big.roundDown);
+
+      return {
+        success: true,
+        tokenIn,
+        tokenOut,
+        amountIn,
+        amountOut: amountOut.toFixed(0),
+        minAmountOut,
+        routes,
+        // Save raw serverRoutes data for executeSwap
+        rawRoutes: serverRoutes,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        tokenIn: params.tokenIn,
+        tokenOut: params.tokenOut,
+        amountIn: params.amountIn,
+        amountOut: "0",
+        minAmountOut: "0",
+        routes: [],
+        error: error?.message || "Quote failed",
+      };
+    }
+  }
+
+  /**
+   * Execute token swap
+   */
+  async executeSwap(params: ExecuteParams): Promise<ExecuteResult> {
+    try {
+      const { quote, recipient, depositAddress } = params;
+
+      if (!quote.success || !quote.routes.length) {
+        return {
+          success: false,
+          error: "Invalid quote",
+        };
+      }
+
+      // Build swap actions list
+      // Use raw serverRoutes data
+      const swapActions: any[] = [];
+
+      // Prefer raw rawRoutes if available
+      const routesToUse = quote.rawRoutes || quote.routes;
+
+      routesToUse.forEach((route: any) => {
+        const pools = route.pools || [];
+        pools.forEach((pool: any) => {
+          // Reference getSwapActionsList implementation: use raw pool object directly
+          // If amount_in is 0, remove the field
+          const poolCopy = { ...pool };
+
+          if (+(poolCopy?.amount_in || 0) == 0) {
+            delete poolCopy.amount_in;
+          }
+
+          // Ensure pool_id is a number
+          poolCopy.pool_id = Number(poolCopy.pool_id);
+
+          swapActions.push(poolCopy);
+        });
+      });
+
+      if (!swapActions.length) {
+        return {
+          success: false,
+          error: "No swap actions",
+        };
+      }
+
+      // Determine recipient address (prefer depositAddress)
+      const finalRecipient = depositAddress || recipient;
+
+      // Check if recipient address is registered in target token contract
+      // If not registered, call storage_deposit first to register account
+      const transactions: any[] = [];
+
+      if (finalRecipient && quote.tokenOut?.address) {
+        let isRegistered = false;
+        try {
+          const storageBalance = await this.nearChainAdapter.view({
+            contractId: quote.tokenOut.address,
+            methodName: "storage_balance_of",
+            args: {
+              account_id: finalRecipient,
+            },
+          });
+          isRegistered = !!storageBalance;
+        } catch (err) {
+          isRegistered = false;
+        }
+
+        // If not registered, add storage_deposit transaction
+        if (!isRegistered) {
+          console.log("🔍 SmartRouter - Registering recipient account:", {
+            contractId: quote.tokenOut.address,
+            accountId: finalRecipient,
+          });
+
+          transactions.push({
+            contractId: quote.tokenOut.address,
+            methodName: "storage_deposit",
+            args: {
+              account_id: finalRecipient,
+              registration_only: true,
+            },
+            gas: "50",
+            expandDeposit: this.tokenStorageDepositRead,
+          });
+        }
+      }
+
+      // Build REF Exchange message
+      // Note: According to REF Exchange docs, swap_out_recipient is optional
+      // If not present, tokens will be returned to the caller
+      const swapMsg: any = {
+        force: 0,
+        actions: swapActions,
+        skip_unwrap_near: false,
+      };
+
+      // Only add swap_out_recipient when recipient address needs to be specified
+      if (finalRecipient) {
+        swapMsg.swap_out_recipient = finalRecipient;
+      }
+
+      console.log("🔍 SmartRouter - Executing swap:", {
+        contractId: quote.tokenIn.address,
+        receiver_id: this.refExchangeId,
+        amount: quote.amountIn,
+        swapMsg,
+        swapActionsCount: swapActions.length,
+        recipient: finalRecipient,
+        tokenOut: quote.tokenOut?.address,
+      });
+
+      // Add ft_transfer_call transaction
+      transactions.push({
+        contractId: quote.tokenIn.address,
+        methodName: "ft_transfer_call",
+        args: {
+          receiver_id: this.refExchangeId,
+          amount: quote.amountIn,
+          msg: JSON.stringify(swapMsg),
+        },
+        gas: "250",
+        expandDeposit: "1", // Use expandDeposit to pass 1 yoctoNEAR directly (in yoctoNEAR units)
+      });
+
+      const result = await this.nearChainAdapter.call({
+        transactions,
+      });
+
+      if (result.status === "success") {
+        return {
+          success: true,
+          txHash: result.txHash,
+          txHashArray:
+            result.txHashArr || (result.txHash ? [result.txHash] : []),
+        };
+      } else {
+        return {
+          success: false,
+          error: result.message || "Execute swap failed",
+        };
+      }
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error?.message || "Execute swap failed",
+      };
+    }
+  }
+
+  /**
+   * Get supported chain
+   */
+  getSupportedChain(): "near" {
+    return "near";
+  }
+}

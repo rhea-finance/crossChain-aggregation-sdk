@@ -1,0 +1,31 @@
+# Source files (only include dist)
+src/
+tsconfig.json
+tsup.config.ts
+
+# Development files
+.git/
+.gitignore
+.prettierrc
+.eslintrc
+*.md
+!README.md
+
+# Testing
+test/
+tests/
+*.test.ts
+*.spec.ts
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
