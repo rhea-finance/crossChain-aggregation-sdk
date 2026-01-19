@@ -5,6 +5,29 @@
 import { TokenInfo, BluechipTokensConfig } from "../types";
 import { logger } from "./logger";
 
+// Internal storage for bluechip tokens configuration
+let bluechipTokensConfig: BluechipTokensConfig | null = null;
+
+/**
+ * Set bluechip tokens configuration
+ */
+export function setBluechipTokensConfig(config: BluechipTokensConfig): void {
+  bluechipTokensConfig = config;
+}
+
+/**
+ * Get bluechip tokens configuration
+ */
+export function getBluechipTokensConfig(): BluechipTokensConfig {
+  if (!bluechipTokensConfig) {
+    logger.warn(
+      "getBluechipTokensConfig - Bluechip tokens config not set, returning empty config"
+    );
+    return {};
+  }
+  return bluechipTokensConfig;
+}
+
 /**
  * Normalize token ID (remove nep141: prefix, convert near to wrap.near)
  */
@@ -40,12 +63,41 @@ export function normalizeTokenId(
  */
 export function isNearIntentsSupportedToken(
   token: TokenInfo,
-  bluechipTokens: BluechipTokensConfig
+  bluechipTokens?: BluechipTokensConfig
 ): boolean {
-  if (!token?.symbol) return false;
+  if (!token?.symbol || !token?.address) {
+    return false;
+  }
 
-  const tokenConfig = bluechipTokens[token.symbol];
-  return !!tokenConfig?.address;
+  // Use provided config or get from internal storage
+  const config = bluechipTokens || getBluechipTokensConfig();
+
+  // Normalize symbol to uppercase for matching
+  const normalizedSymbol = token.symbol.toUpperCase();
+
+  // Handle NEAR/wNEAR special case
+  const symbolKey =
+    normalizedSymbol === "NEAR" || normalizedSymbol === "WNEAR"
+      ? "NEAR"
+      : normalizedSymbol;
+
+  const tokenConfig = config[symbolKey as keyof typeof config];
+
+  if (!tokenConfig) {
+    return false;
+  }
+
+  // Normalize addresses for comparison (remove nep141: prefix if present)
+  const normalizeAddress = (addr: string) =>
+    addr.replace(/^nep141:/, "").toLowerCase();
+  const tokenAddress = normalizeAddress(token.address);
+  const configAddress = normalizeAddress(tokenConfig.address || "");
+  const configAssetId = tokenConfig.assetId
+    ? normalizeAddress(tokenConfig.assetId)
+    : "";
+
+  // Match if token address matches config address or assetId
+  return tokenAddress === configAddress || tokenAddress === configAssetId;
 }
 
 /**

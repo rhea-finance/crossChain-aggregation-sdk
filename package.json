@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Cross-chain DEX aggregation SDK for multi-chain token swaps and routing",
   "main": "dist/index.js",
-  "module": "dist/index.esm.js",
+  "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
   "files": [
     "dist",
@@ -45,7 +45,14 @@
     "tsup": "^8.0.0",
     "typescript": "^5.0.0"
   },
-  "peerDependencies": {},
+  "peerDependencies": {
+    "@near-js/providers": "*"
+  },
+  "peerDependenciesMeta": {
+    "@near-js/providers": {
+      "optional": true
+    }
+  },
   "engines": {
     "node": ">=16.0.0"
   }
