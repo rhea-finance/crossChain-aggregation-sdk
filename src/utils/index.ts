@@ -2,7 +2,8 @@
  * Cross-chain DEX aggregation SDK utility functions
  */
 
-import { TokenInfo, BluechipTokenConfig, BluechipTokensConfig } from "../types";
+import { TokenInfo, BluechipTokensConfig } from "../types";
+import { logger } from "./logger";
 
 /**
  * Normalize token ID (remove nep141: prefix, convert near to wrap.near)
@@ -12,7 +13,7 @@ export function normalizeTokenId(
   wrapNearContractId: string = "wrap.near"
 ): string {
   if (!tokenId) {
-    console.error("🔍 normalizeTokenId - Empty tokenId:", tokenId);
+    logger.error("normalizeTokenId - Empty tokenId:", tokenId);
     return "";
   }
 
@@ -25,7 +26,7 @@ export function normalizeTokenId(
   }
 
   if (!normalized) {
-    console.error("🔍 normalizeTokenId - Result is empty:", {
+    logger.error("normalizeTokenId - Result is empty:", {
       tokenId,
       normalized,
     });
@@ -90,8 +91,8 @@ export function findBestBluechipToken(
   // Return first available bluechip token
   if (preferredTokens.length === 0) {
     // Fallback to wrap.near
-    console.warn(
-      "🔍 findBestBluechipToken - No preferred tokens found, using wrap.near"
+    logger.warn(
+      "findBestBluechipToken - No preferred tokens found, using wrap.near"
     );
     return {
       address: wrapNearContractId,
@@ -101,7 +102,7 @@ export function findBestBluechipToken(
     };
   }
 
-  console.log("🔍 findBestBluechipToken - Selected token:", preferredTokens[0]);
+  logger.debug("findBestBluechipToken - Selected token:", preferredTokens[0]);
   return preferredTokens[0];
 }
 
@@ -153,3 +154,6 @@ export function normalizeDestinationAsset(
 
   return assetId;
 }
+
+// Export logger for external use
+export { logger } from "./logger";

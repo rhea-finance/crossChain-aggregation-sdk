@@ -11,6 +11,7 @@ import {
   convertSlippageToBasisPoints,
   normalizeDestinationAsset,
 } from "../utils";
+import { logger } from "../utils/logger";
 import { IntentsQuotationAdapter } from "../adapters/types";
 import { NearSmartRouter } from "../chains/near/NearSmartRouter";
 
@@ -85,14 +86,14 @@ export async function completeQuote(
 
   // Validate bluechip token address
   if (!bluechipToken?.address) {
-    console.error("🔍 DEX Aggregator - Failed to find bluechip token:", {
+    logger.error("DEX Aggregator - Failed to find bluechip token:", {
       bluechipToken,
       bluechipTokens,
     });
     throw new Error("Failed to find bluechip token address");
   }
 
-  console.log("🔍 DEX Aggregator - Using bluechip token:", {
+  logger.debug("DEX Aggregator - Using bluechip token:", {
     address: bluechipToken.address,
     symbol: bluechipToken.symbol,
     decimals: bluechipToken.decimals,
@@ -108,7 +109,7 @@ export async function completeQuote(
       throw new Error("Source token address is required");
     }
 
-    console.log("🔍 DEX Aggregator - Pre-swap quote params:", {
+    logger.debug("DEX Aggregator - Pre-swap quote params:", {
       tokenIn: {
         address: sourceToken.address,
         symbol: sourceToken.symbol,
@@ -135,7 +136,7 @@ export async function completeQuote(
     });
 
     if (!preSwapQuote.success) {
-      console.error("🔍 DEX Aggregator - Pre-swap quote failed:", {
+      logger.error("DEX Aggregator - Pre-swap quote failed:", {
         error: preSwapQuote.error,
         tokenIn: sourceToken,
         tokenOut: bluechipToken,
@@ -146,7 +147,7 @@ export async function completeQuote(
     // Validate pre-swap output amount
     const preSwapAmountOut = preSwapQuote.amountOut;
     if (!preSwapAmountOut || new Big(preSwapAmountOut).lte(0)) {
-      console.error("🔍 DEX Aggregator - Pre-swap amountOut is invalid:", {
+      logger.error("DEX Aggregator - Pre-swap amountOut is invalid:", {
         amountOut: preSwapAmountOut,
         tokenIn: sourceToken,
         tokenOut: bluechipToken,
@@ -156,7 +157,7 @@ export async function completeQuote(
       );
     }
 
-    console.log("🔍 DEX Aggregator - Pre-swap quote success:", {
+    logger.debug("DEX Aggregator - Pre-swap quote success:", {
       amountOut: preSwapAmountOut,
       tokenOut: bluechipToken.symbol,
       decimals: bluechipToken.decimals,
@@ -171,7 +172,7 @@ export async function completeQuote(
     const bluechipTokenConfig = bluechipTokens[bluechipToken.symbol];
     if (bluechipTokenConfig?.assetId) {
       normalizedSourceAsset = bluechipTokenConfig.assetId;
-      console.log("🔍 Using bluechip token assetId for NearIntents:", {
+      logger.debug("Using bluechip token assetId for NearIntents:", {
         symbol: bluechipToken.symbol,
         assetId: normalizedSourceAsset,
         contractAddress: bluechipToken.address,
@@ -179,8 +180,8 @@ export async function completeQuote(
     } else {
       // Fallback: add nep141: prefix
       normalizedSourceAsset = `nep141:${bluechipToken.address}`;
-      console.warn(
-        "🔍 Bluechip token assetId not found, using contractAddress with prefix:",
+      logger.warn(
+        "Bluechip token assetId not found, using contractAddress with prefix:",
         {
           symbol: bluechipToken.symbol,
           normalizedSourceAsset,
@@ -242,7 +243,7 @@ export async function completeQuote(
   const slippageBps = convertSlippageToBasisPoints(slippage);
   const intentsAmount = needsPreSwap ? preSwapQuote!.amountOut : amountIn;
 
-  console.log("🔍 DEX Aggregator - Calling NearIntents quotation:", {
+  logger.debug("DEX Aggregator - Calling NearIntents quotation:", {
     originAsset: normalizedSourceAsset,
     destinationAsset: normalizedTargetAsset,
     amount: intentsAmount,
@@ -253,7 +254,7 @@ export async function completeQuote(
   // When using intermediate routing, swapType should be FLEX_INPUT
   const swapTypeForIntents = needsPreSwap ? "FLEX_INPUT" : undefined;
 
-  console.log("🔍 DEX Aggregator - swapType for NearIntents:", {
+  logger.debug("DEX Aggregator - swapType for NearIntents:", {
     needsPreSwap,
     swapType: swapTypeForIntents || "EXACT_INPUT (default)",
   });
@@ -268,7 +269,7 @@ export async function completeQuote(
     swapType: swapTypeForIntents,
   });
 
-  console.log("🔍 DEX Aggregator - NearIntents quotation result:", {
+  logger.debug("DEX Aggregator - NearIntents quotation result:", {
     quoteStatus: intentsQuote.quoteStatus,
     message: intentsQuote.message,
     hasDepositAddress: !!intentsQuote.quoteSuccessResult?.quote?.depositAddress,
@@ -276,7 +277,7 @@ export async function completeQuote(
 
   if (intentsQuote.quoteStatus !== "success") {
     const errorMessage = intentsQuote.message || "Unknown error";
-    console.error("🔍 DEX Aggregator - NearIntents quote failed:", {
+    logger.error("DEX Aggregator - NearIntents quote failed:", {
       error: errorMessage,
       originAsset: normalizedSourceAsset,
       destinationAsset: normalizedTargetAsset,

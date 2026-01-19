@@ -269,6 +269,27 @@ Convert slippage format to basis points (1 basis point = 0.01%).
 
 Find the best bluechip token to use as intermediate token (priority order: USDT > USDC > wNEAR).
 
+### Logging
+
+The SDK uses a simple logger with log level control. You can control logging via the `LOG_LEVEL` environment variable:
+
+- `LOG_LEVEL=debug` - Show all logs (default in development)
+- `LOG_LEVEL=info` - Show info, warn, and error logs
+- `LOG_LEVEL=warn` - Show only warnings and errors (default in production)
+- `LOG_LEVEL=error` - Show only errors
+- `LOG_LEVEL=silent` - Disable all logs
+
+```typescript
+import { logger } from "@rhea-finance/cross-chain-aggregation-dex";
+
+// The logger is automatically used internally
+// You can also use it in your code if needed
+logger.debug("Debug message");
+logger.info("Info message");
+logger.warn("Warning message");
+logger.error("Error message");
+```
+
 ## Type Definitions
 
 All type definitions can be imported from the package:

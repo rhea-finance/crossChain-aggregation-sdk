@@ -14,6 +14,3 @@ export * from "./chains/near/NearSmartRouter";
 
 // Integration function exports
 export * from "./integration/completeQuote";
-
-// Router registry exports
-export * from "./routerRegistry";

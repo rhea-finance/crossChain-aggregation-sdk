@@ -15,6 +15,7 @@ import {
   normalizeTokenId,
   convertSlippageToBasisPoints,
 } from "../../utils";
+import { logger } from "../../utils/logger";
 import {
   FindPathAdapter,
   NearChainAdapter,
@@ -55,7 +56,7 @@ export class NearSmartRouter implements DexRouter {
         tokenOut,
         amountIn,
         slippage,
-        swapType = "EXACT_INPUT",
+        swapType: _swapType = "EXACT_INPUT", // Currently not used, reserved for future use
       } = params;
 
       // Validate parameters
@@ -84,7 +85,7 @@ export class NearSmartRouter implements DexRouter {
 
       // Validate normalized addresses
       if (!normalizedTokenIn || !normalizedTokenOut) {
-        console.error("🔍 SmartRouter quote - Invalid token addresses:", {
+        logger.error("SmartRouter quote - Invalid token addresses:", {
           tokenIn: {
             original: tokenIn.address,
             normalized: normalizedTokenIn,
@@ -112,7 +113,7 @@ export class NearSmartRouter implements DexRouter {
       const slippageBps = convertSlippageToBasisPoints(slippage);
       const slippageDecimalForApi = slippageBps / 10000;
 
-      console.log("🔍 SmartRouter quote - Calling findPath:", {
+      logger.debug("SmartRouter quote - Calling findPath:", {
         tokenIn: normalizedTokenIn,
         tokenOut: normalizedTokenOut,
         amountIn,
@@ -129,7 +130,7 @@ export class NearSmartRouter implements DexRouter {
         supportLedger: false,
       });
 
-      console.log("🔍 SmartRouter quote - findPath response:", {
+      logger.debug("SmartRouter quote - findPath response:", {
         result_code: response?.result_code,
         result_msg: response?.result_msg || response?.result_message,
         hasRoutes: !!response?.result_data?.routes?.length,
@@ -270,7 +271,7 @@ export class NearSmartRouter implements DexRouter {
 
         // If not registered, add storage_deposit transaction
         if (!isRegistered) {
-          console.log("🔍 SmartRouter - Registering recipient account:", {
+          logger.debug("SmartRouter - Registering recipient account:", {
             contractId: quote.tokenOut.address,
             accountId: finalRecipient,
           });
@@ -302,7 +303,7 @@ export class NearSmartRouter implements DexRouter {
         swapMsg.swap_out_recipient = finalRecipient;
       }
 
-      console.log("🔍 SmartRouter - Executing swap:", {
+      logger.debug("SmartRouter - Executing swap:", {
         contractId: quote.tokenIn.address,
         receiver_id: this.refExchangeId,
         amount: quote.amountIn,
