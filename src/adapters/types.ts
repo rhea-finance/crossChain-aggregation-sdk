@@ -1,6 +1,4 @@
-/**
- * FindPath API response format
- */
+/** FindPath API response. */
 export interface FindPathResponse {
   result_code: number;
   result_msg?: string;
@@ -11,10 +9,7 @@ export interface FindPathResponse {
   } | null;
 }
 
-/**
- * FindPath API adapter
- * Used to query DEX routes
- */
+/** Adapter for querying DEX routes (FindPath). */
 export interface FindPathAdapter {
   findPath(params: {
     tokenIn: string;
@@ -25,9 +20,7 @@ export interface FindPathAdapter {
   }): Promise<FindPathResponse>;
 }
 
-/**
- * NearIntents quote result
- */
+/** NearIntents quote result. */
 export interface IntentsQuoteResult {
   quoteStatus: "success" | "error";
   message?: string;
@@ -42,9 +35,7 @@ export interface IntentsQuoteResult {
   [key: string]: any;
 }
 
-/**
- * NearIntents quotation adapter
- */
+/** Adapter for fetching NearIntents quotes. */
 export interface IntentsQuotationAdapter {
   quote(params: {
     originAsset: string;
@@ -58,13 +49,8 @@ export interface IntentsQuotationAdapter {
   }): Promise<IntentsQuoteResult>;
 }
 
-/**
- * Near chain interaction adapter
- */
+/** Adapter for interacting with NEAR (call/view). */
 export interface NearChainAdapter {
-  /**
-   * Call Near contract method
-   */
   call(params: {
     transactions: Array<{
       contractId: string;
@@ -80,9 +66,6 @@ export interface NearChainAdapter {
     message?: string;
   }>;
 
-  /**
-   * View Near contract state
-   */
   view(params: {
     contractId: string;
     methodName: string;
@@ -90,28 +73,14 @@ export interface NearChainAdapter {
   }): Promise<any>;
 }
 
-/**
- * Configuration adapter
- * Provides chain-specific configuration information
- */
+/** Chain-specific configuration provider. */
 export interface ConfigAdapter {
-  /**
-   * Get REF Exchange contract address
-   */
   getRefExchangeId(): string;
 
-  /**
-   * Get WRAP NEAR contract address
-   */
   getWrapNearContractId(): string;
 
-  /**
-   * Get FindPath API URL
-   */
   getFindPathUrl(): string;
 
-  /**
-   * Get storage deposit constant (for storage_deposit)
-   */
+  /** Storage deposit amount (yoctoNEAR) for `storage_deposit` when needed. */
   getTokenStorageDepositRead?(): string;
 }

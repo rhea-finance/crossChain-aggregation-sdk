@@ -77,6 +77,13 @@ export async function completeQuote(
     config;
   const wrapNearContractId = configAdapter.getWrapNearContractId();
 
+  if (!sourceToken?.address) {
+    throw new Error("Source token address is required");
+  }
+  if (!targetToken?.address) {
+    throw new Error("Target token address is required");
+  }
+
   const needsPreSwap =
     sourceChain === "near" &&
     !isNearIntentsSupportedToken(sourceToken, bluechipTokens);
@@ -163,7 +170,12 @@ export async function completeQuote(
 
   let normalizedSourceAsset: string;
   if (needsPreSwap) {
-    const bluechipTokenConfig = bluechipTokens[bluechipToken.symbol];
+    const bluechipKey =
+      bluechipToken.symbol?.toUpperCase() === "WNEAR"
+        ? "NEAR"
+        : bluechipToken.symbol?.toUpperCase();
+    const bluechipTokenConfig =
+      (bluechipKey && bluechipTokens[bluechipKey]) || undefined;
     if (bluechipTokenConfig?.assetId) {
       normalizedSourceAsset = bluechipTokenConfig.assetId;
       logger.debug("Using bluechip token assetId for NearIntents:", {
@@ -183,7 +195,8 @@ export async function completeQuote(
     }
   } else {
     if (sourceToken.symbol) {
-      const sourceTokenConfig = bluechipTokens[sourceToken.symbol];
+      const sourceKey = sourceToken.symbol.toUpperCase();
+      const sourceTokenConfig = bluechipTokens[sourceKey];
       if (sourceTokenConfig?.assetId) {
         normalizedSourceAsset = sourceTokenConfig.assetId;
       } else {
@@ -207,12 +220,6 @@ export async function completeQuote(
   }
 
   let normalizedTargetAsset = targetToken.address;
-  if (!normalizedTargetAsset) {
-    normalizedTargetAsset = normalizeTokenId(
-      targetToken.address,
-      wrapNearContractId
-    );
-  }
   if (
     normalizedTargetAsset &&
     !normalizedTargetAsset.startsWith("nep141:") &&

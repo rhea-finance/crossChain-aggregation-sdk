@@ -1,7 +1,4 @@
-/**
- * Usage examples
- * This file demonstrates how to use the Cross-chain DEX Aggregation SDK
- */
+/** Usage examples (non-production). */
 
 import { NearSmartRouter } from "../chains/near/NearSmartRouter";
 import { completeQuote } from "../integration/completeQuote";
@@ -13,15 +10,11 @@ import {
   ExampleConfigAdapter,
 } from "./adapters.example";
 
-/**
- * Example 1: Basic quote
- */
 export async function exampleBasicQuote() {
-  // Create adapters
   const findPathAdapter = new ExampleFindPathAdapter(
     "https://smartrouter.ref.finance"
   );
-  const nearChainAdapter = new ExampleNearChainAdapter(null as any); // Need to pass actual account
+  const nearChainAdapter = new ExampleNearChainAdapter(null as any);
   const configAdapter = new ExampleConfigAdapter({
     refExchangeId: "v2.ref-finance.near",
     wrapNearContractId: "wrap.near",
@@ -29,14 +22,12 @@ export async function exampleBasicQuote() {
     tokenStorageDepositRead: "1250000000000000000000",
   });
 
-  // Create DEX Aggregator instance
   const router = new NearSmartRouter({
     findPathAdapter,
     nearChainAdapter,
     configAdapter,
   });
 
-  // Define tokens
   const tokenIn: TokenInfo = {
     address: "token-a.near",
     symbol: "TOKENA",
@@ -51,7 +42,6 @@ export async function exampleBasicQuote() {
     chain: "near",
   };
 
-  // Get quote
   const quote = await router.quote({
     tokenIn,
     tokenOut,
@@ -73,21 +63,15 @@ export async function exampleBasicQuote() {
   return quote;
 }
 
-/**
- * Example 2: Execute swap
- */
 export async function exampleExecuteSwap() {
-  // ... Create router (same as example 1)
-  const router = null as any; // Need to create in actual usage
+  const router = null as any;
 
-  // Get quote first
   const quote = await exampleBasicQuote();
 
   if (!quote.success) {
     throw new Error("Quote failed");
   }
 
-  // Execute swap
   const result = await router.executeSwap({
     quote,
     recipient: "user.near",
@@ -106,11 +90,7 @@ export async function exampleExecuteSwap() {
   return result;
 }
 
-/**
- * Example 3: Complete quote (DEX Aggregator + NearIntents)
- */
 export async function exampleCompleteQuote() {
-  // Create adapters
   const findPathAdapter = new ExampleFindPathAdapter(
     "https://smartrouter.ref.finance"
   );
@@ -124,14 +104,12 @@ export async function exampleCompleteQuote() {
     findPathUrl: "https://smartrouter.ref.finance",
   });
 
-  // Create DEX Aggregator
   const router = new NearSmartRouter({
     findPathAdapter,
     nearChainAdapter,
     configAdapter,
   });
 
-  // Configure bluechip tokens
   const bluechipTokens: BluechipTokensConfig = {
     USDT: {
       address: "usdt.tether-token.near",
@@ -154,7 +132,6 @@ export async function exampleCompleteQuote() {
     },
   };
 
-  // Define tokens
   const sourceToken: TokenInfo = {
     address: "some-token.near",
     symbol: "SOMETOKEN",
@@ -169,7 +146,6 @@ export async function exampleCompleteQuote() {
     chain: "bsc",
   };
 
-  // Complete quote
   const completeQuoteResult = await completeQuote(
     {
       sourceToken,

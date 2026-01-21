@@ -35,7 +35,8 @@ export function normalizeTokenId(
 
   let normalized = tokenId.replace(/^nep141:/, "");
 
-  if (normalized === "near" || normalized === "nep141:near") {
+  // Note: `nep141:` has already been stripped above.
+  if (normalized === "near") {
     normalized = wrapNearContractId;
   }
 

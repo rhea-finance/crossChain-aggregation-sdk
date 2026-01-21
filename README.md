@@ -210,7 +210,7 @@ Get quote method that returns optimal swap path and output amount.
 - `tokenIn`: Input token information
 - `tokenOut`: Output token information
 - `amountIn`: Input amount (string format, considering decimals)
-- `slippage`: Slippage tolerance (basis points, 50 = 0.5%)
+- `slippage`: Slippage tolerance (prefer bps, 50 = 0.5%). Percent/decimal inputs are also accepted.
 - `swapType`: Swap type ("EXACT_INPUT" | "EXACT_OUTPUT")
 
 **Returns:**
