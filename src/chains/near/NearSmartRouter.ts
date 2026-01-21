@@ -420,7 +420,7 @@ export class NearSmartRouter implements DexRouter {
             amount: quote.amountIn,
             msg: JSON.stringify(swapMsg),
           },
-          gas: "300000000000000", // ~300 Tgas reference
+          gas: "300", // 300 Tgas
           expandDeposit: "1", // 1 yoctoNEAR
         });
 
