@@ -32,6 +32,8 @@ export interface QuoteParams {
   slippage: number;
   swapType?: "EXACT_INPUT" | "EXACT_OUTPUT";
   recipient?: string;
+  /** Caller's NEAR account ID (used as fallback for SmartX user/receiveUser when recipient is not available). */
+  accountId?: string;
 }
 
 export interface QuoteResult {

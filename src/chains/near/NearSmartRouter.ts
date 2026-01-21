@@ -64,6 +64,7 @@ export class NearSmartRouter implements DexRouter {
         slippage,
         swapType: _swapType = "EXACT_INPUT", // Currently not used, reserved for future use
         recipient,
+        accountId,
       } = params;
 
       if (!tokenIn?.address || !tokenOut?.address) {
@@ -116,19 +117,9 @@ export class NearSmartRouter implements DexRouter {
       const slippageBps = convertSlippageToBasisPoints(slippage);
       const slippageDecimalForApi = slippageBps / 10000;
 
-      // SmartX 依赖 user/receiveUser，确保存在
-      if (this.swapMultiDexPathAdapter && !recipient) {
-        return {
-          success: false,
-          tokenIn,
-          tokenOut,
-          amountIn,
-          amountOut: "0",
-          minAmountOut: "0",
-          routes: [],
-          error: "recipient is required when SmartX adapter is enabled",
-        };
-      }
+      // SmartX user/receiveUser fallback: recipient first, then accountId; if both missing, skip SmartX.
+      const smartxUser = recipient || accountId || "";
+      const canCallSmartX = this.swapMultiDexPathAdapter && !!smartxUser;
 
       logger.debug("SmartRouter quote - Calling quote backends:", {
         tokenIn: normalizedTokenIn,
@@ -136,7 +127,8 @@ export class NearSmartRouter implements DexRouter {
         amountIn,
         slippage: slippageDecimalForApi,
         slippageBps,
-        hasSmartX: !!this.swapMultiDexPathAdapter,
+        hasSmartX: canCallSmartX,
+        smartxUser: smartxUser || "none",
       });
 
       const [findPathResp, smartxResp] = await Promise.all([
@@ -148,8 +140,8 @@ export class NearSmartRouter implements DexRouter {
           // v1 requires pathDeep=3 (handled by adapter implementation)
           supportLedger: false,
         }),
-        this.swapMultiDexPathAdapter
-          ? this.swapMultiDexPathAdapter.swapMultiDexPath({
+        canCallSmartX
+          ? this.swapMultiDexPathAdapter!.swapMultiDexPath({
               amountIn: String(amountIn),
               tokenIn: normalizedTokenIn,
               tokenOut: normalizedTokenOut,
@@ -158,8 +150,8 @@ export class NearSmartRouter implements DexRouter {
               chainId: 0,
               routerCount: 1,
               skipUnwrapNativeToken: false,
-              user: recipient || "",
-              receiveUser: recipient || "",
+              user: smartxUser,
+              receiveUser: smartxUser,
             })
           : Promise.resolve(null),
       ]);
@@ -429,7 +421,7 @@ export class NearSmartRouter implements DexRouter {
             amount: quote.amountIn,
             msg: JSON.stringify(swapMsg),
           },
-          gas: "300000000000000", // ~300 Tgas as参考
+          gas: "300000000000000", // ~300 Tgas reference
           expandDeposit: "1", // 1 yoctoNEAR
         });
 
