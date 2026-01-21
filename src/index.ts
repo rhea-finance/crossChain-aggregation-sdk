@@ -1,16 +1,9 @@
-/**
- * Cross-chain DEX Aggregator SDK Entry Point
- */
-
-// Type exports
+/** Public entry: re-export types/adapters/utils/routers/integration. */
 export * from "./types";
 export * from "./adapters/types";
 
-// Utility function exports
 export * from "./utils";
 
-// Router implementation exports
 export * from "./chains/near/NearSmartRouter";
 
-// Integration function exports
 export * from "./integration/completeQuote";

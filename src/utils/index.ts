@@ -1,23 +1,14 @@
-/**
- * Cross-chain DEX aggregation SDK utility functions
- */
-
 import { TokenInfo, BluechipTokensConfig } from "../types";
 import { logger } from "./logger";
 
-// Internal storage for bluechip tokens configuration
 let bluechipTokensConfig: BluechipTokensConfig | null = null;
 
-/**
- * Set bluechip tokens configuration
- */
+/** Set the SDK-wide bluechip token config used for NearIntents compatibility and intermediate routing. */
 export function setBluechipTokensConfig(config: BluechipTokensConfig): void {
   bluechipTokensConfig = config;
 }
 
-/**
- * Get bluechip tokens configuration
- */
+/** Get the bluechip token config; returns an empty object (and warns) if unset. */
 export function getBluechipTokensConfig(): BluechipTokensConfig {
   if (!bluechipTokensConfig) {
     logger.warn(
@@ -29,7 +20,9 @@ export function getBluechipTokensConfig(): BluechipTokensConfig {
 }
 
 /**
- * Normalize token ID (remove nep141: prefix, convert near to wrap.near)
+ * Normalize a NEAR asset id:
+ * - strip `nep141:` prefix (if present)
+ * - map `near` -> `wrap.near` (overridable via `wrapNearContractId`)
  */
 export function normalizeTokenId(
   tokenId: string | undefined | null,
@@ -40,10 +33,8 @@ export function normalizeTokenId(
     return "";
   }
 
-  // Remove nep141: prefix
   let normalized = tokenId.replace(/^nep141:/, "");
 
-  // Convert near to wrap.near
   if (normalized === "near" || normalized === "nep141:near") {
     normalized = wrapNearContractId;
   }
@@ -58,9 +49,7 @@ export function normalizeTokenId(
   return normalized;
 }
 
-/**
- * Check if token is a NearIntents-supported bluechip token
- */
+/** True if the token matches a NearIntents-supported bluechip token (by symbol + address/assetId). */
 export function isNearIntentsSupportedToken(
   token: TokenInfo,
   bluechipTokens?: BluechipTokensConfig
@@ -69,13 +58,10 @@ export function isNearIntentsSupportedToken(
     return false;
   }
 
-  // Use provided config or get from internal storage
   const config = bluechipTokens || getBluechipTokensConfig();
 
-  // Normalize symbol to uppercase for matching
   const normalizedSymbol = token.symbol.toUpperCase();
 
-  // Handle NEAR/wNEAR special case
   const symbolKey =
     normalizedSymbol === "NEAR" || normalizedSymbol === "WNEAR"
       ? "NEAR"
@@ -87,7 +73,6 @@ export function isNearIntentsSupportedToken(
     return false;
   }
 
-  // Normalize addresses for comparison (remove nep141: prefix if present)
   const normalizeAddress = (addr: string) =>
     addr.replace(/^nep141:/, "").toLowerCase();
   const tokenAddress = normalizeAddress(token.address);
@@ -96,21 +81,16 @@ export function isNearIntentsSupportedToken(
     ? normalizeAddress(tokenConfig.assetId)
     : "";
 
-  // Match if token address matches config address or assetId
   return tokenAddress === configAddress || tokenAddress === configAssetId;
 }
 
-/**
- * Find the best bluechip token to use as intermediate token
- */
+/** Pick an intermediate bluechip token (priority: USDT > USDC > wNEAR; fallback to `wrapNearContractId`). */
 export function findBestBluechipToken(
   bluechipTokens: BluechipTokensConfig,
   wrapNearContractId: string = "wrap.near"
 ): TokenInfo {
-  // Priority order: USDT > USDC > wNEAR
   const preferredTokens: TokenInfo[] = [];
 
-  // USDT
   if (bluechipTokens.USDT?.address) {
     preferredTokens.push({
       address: bluechipTokens.USDT.address,
@@ -120,7 +100,6 @@ export function findBestBluechipToken(
     });
   }
 
-  // USDC
   if (bluechipTokens.USDC?.address) {
     preferredTokens.push({
       address: bluechipTokens.USDC.address,
@@ -130,7 +109,6 @@ export function findBestBluechipToken(
     });
   }
 
-  // wNEAR
   if (bluechipTokens.NEAR?.address) {
     preferredTokens.push({
       address: bluechipTokens.NEAR.address,
@@ -140,9 +118,7 @@ export function findBestBluechipToken(
     });
   }
 
-  // Return first available bluechip token
   if (preferredTokens.length === 0) {
-    // Fallback to wrap.near
     logger.warn(
       "findBestBluechipToken - No preferred tokens found, using wrap.near"
     );
@@ -159,47 +135,42 @@ export function findBestBluechipToken(
 }
 
 /**
- * Convert slippage format (percentage or decimal -> basis points)
+ * Convert slippage input into bps (1 bps = 0.01%).
+ * - `>= 1`: bps (e.g. 50 = 0.5%)
+ * - `[0.01, 1)`: percent (e.g. 0.5 = 0.5%)
+ * - `(0, 0.01)`: decimal (e.g. 0.005 = 0.5%)
  */
 export function convertSlippageToBasisPoints(slippage: number): number {
-  // If already in basis points (>= 1), return directly
   if (slippage >= 1) {
     return Math.round(slippage);
   }
 
-  // If percentage (0.5 means 0.5%), convert to basis points
-  if (slippage > 0 && slippage < 1) {
-    return Math.round(slippage * 100);
-  }
-
-  // If decimal (0.005 means 0.5%), convert to basis points
-  if (slippage < 0.01) {
+  if (slippage > 0 && slippage < 0.01) {
+    // 0.005 -> 0.5% -> 50 bps
     return Math.round(slippage * 10000);
   }
-
-  return Math.round(slippage * 100);
+  if (slippage >= 0.01 && slippage < 1) {
+    // 0.5 -> 0.5% -> 50 bps
+    return Math.round(slippage * 100);
+  }
+  return Math.round(slippage);
 }
 
-/**
- * Normalize destination asset address (for NearIntents)
- */
+/** Normalize NearIntents `destinationAsset` (prefix + `near` -> `wrap.near`). */
 export function normalizeDestinationAsset(
   assetId: string,
   wrapNearContractId: string = "wrap.near"
 ): string {
   if (!assetId) return assetId;
 
-  // If already a complete assetId (with prefix), return directly
   if (assetId.startsWith("nep141:") || assetId.startsWith("nep245:")) {
     return assetId;
   }
 
-  // If near, convert to wrap.near
   if (assetId === "near" || assetId === "nep141:near") {
     return `nep141:${wrapNearContractId}`;
   }
 
-  // If contract address (contains .), add nep141: prefix
   if (assetId.includes(".")) {
     return `nep141:${normalizeTokenId(assetId, wrapNearContractId)}`;
   }
@@ -207,5 +178,4 @@ export function normalizeDestinationAsset(
   return assetId;
 }
 
-// Export logger for external use
 export { logger } from "./logger";

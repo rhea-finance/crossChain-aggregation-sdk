@@ -1,6 +1,4 @@
-/**
- * Complete quote: DEX Aggregator + NearIntents
- */
+/** Composite quote: optional NEAR DEX pre-swap + NearIntents quote. */
 
 import Big from "big.js";
 import { TokenInfo, QuoteResult, DexRouter, BluechipTokensConfig } from "../types";
@@ -27,6 +25,7 @@ export interface CompleteQuoteParams {
 
 export interface CompleteQuoteResult {
   intents: {
+    /** Raw NearIntents response (passed through). */
     quote: any; // IntentsQuoteResult
     depositAddress: string;
   };
@@ -51,7 +50,13 @@ export interface CompleteQuoteConfig {
 }
 
 /**
- * Complete quote function
+ * Build a "complete quote":
+ * - If `sourceToken` is not NearIntents-supported, pre-swap to a bluechip token on NEAR DEX.
+ * - Quote NearIntents using (pre-swap output) or `amountIn`.
+ *
+ * Notes:
+ * - Prefer `slippage` in bps (e.g. 50 = 0.5%); we also accept percent/decimal inputs.
+ * - `targetChain` is currently reserved for future use.
  */
 export async function completeQuote(
   params: CompleteQuoteParams,
@@ -72,18 +77,15 @@ export async function completeQuote(
     config;
   const wrapNearContractId = configAdapter.getWrapNearContractId();
 
-  // 1. Determine if pre-swap DEX is needed
   const needsPreSwap =
     sourceChain === "near" &&
     !isNearIntentsSupportedToken(sourceToken, bluechipTokens);
 
-  // 2. Determine bluechip token
   const bluechipToken = findBestBluechipToken(
     bluechipTokens,
     wrapNearContractId
   );
 
-  // Validate bluechip token address
   if (!bluechipToken?.address) {
     logger.error("DEX Aggregator - Failed to find bluechip token:", {
       bluechipToken,
@@ -98,12 +100,9 @@ export async function completeQuote(
     decimals: bluechipToken.decimals,
   });
 
-  // 3. Serial quote (pre-swap → NearIntents)
   let preSwapQuote: QuoteResult | null = null;
 
-  // 3.1 Pre-swap quote (if needed)
   if (needsPreSwap) {
-    // Validate source token address
     if (!sourceToken?.address) {
       throw new Error("Source token address is required");
     }
@@ -143,7 +142,6 @@ export async function completeQuote(
       throw new Error(`Pre-swap quote failed: ${preSwapQuote.error}`);
     }
 
-    // Validate pre-swap output amount
     const preSwapAmountOut = preSwapQuote.amountOut;
     if (!preSwapAmountOut || new Big(preSwapAmountOut).lte(0)) {
       logger.error("DEX Aggregator - Pre-swap amountOut is invalid:", {
@@ -163,11 +161,8 @@ export async function completeQuote(
     });
   }
 
-  // 3.2 NearIntents quote
-  // For pre-swap, use bluechip token's assetId (with nep141: prefix) instead of contractAddress
   let normalizedSourceAsset: string;
   if (needsPreSwap) {
-    // Get bluechip token's assetId from bluechipTokens
     const bluechipTokenConfig = bluechipTokens[bluechipToken.symbol];
     if (bluechipTokenConfig?.assetId) {
       normalizedSourceAsset = bluechipTokenConfig.assetId;
@@ -177,7 +172,6 @@ export async function completeQuote(
         contractAddress: bluechipToken.address,
       });
     } else {
-      // Fallback: add nep141: prefix
       normalizedSourceAsset = `nep141:${bluechipToken.address}`;
       logger.warn(
         "Bluechip token assetId not found, using contractAddress with prefix:",
@@ -188,7 +182,6 @@ export async function completeQuote(
       );
     }
   } else {
-    // Source token is not a bluechip token, use assetId directly (if exists)
     if (sourceToken.symbol) {
       const sourceTokenConfig = bluechipTokens[sourceToken.symbol];
       if (sourceTokenConfig?.assetId) {
@@ -213,7 +206,6 @@ export async function completeQuote(
     }
   }
 
-  // Target token: DEX Aggregator only handles tokenIn; tokenOut remains user's choice
   let normalizedTargetAsset = targetToken.address;
   if (!normalizedTargetAsset) {
     normalizedTargetAsset = normalizeTokenId(
@@ -221,7 +213,6 @@ export async function completeQuote(
       wrapNearContractId
     );
   }
-  // For Near-side contract addresses (e.g., usdt.tether-token.near), add nep141: prefix
   if (
     normalizedTargetAsset &&
     !normalizedTargetAsset.startsWith("nep141:") &&
@@ -234,7 +225,6 @@ export async function completeQuote(
     )}`;
   }
 
-  // Use normalizeDestinationAsset to handle target token (convert near -> wrap.near)
   normalizedTargetAsset =
     normalizeDestinationAsset(normalizedTargetAsset, wrapNearContractId) ||
     normalizedTargetAsset;
@@ -250,7 +240,6 @@ export async function completeQuote(
     preSwapAmountOut: needsPreSwap ? preSwapQuote!.amountOut : undefined,
   });
 
-  // When using intermediate routing, swapType should be FLEX_INPUT
   const swapTypeForIntents = needsPreSwap ? "FLEX_INPUT" : undefined;
 
   logger.debug("DEX Aggregator - swapType for NearIntents:", {
@@ -294,7 +283,6 @@ export async function completeQuote(
     throw new Error("Deposit address not found in intents quote");
   }
 
-  // 4. Build complete quote
   return {
     intents: {
       quote: intentsQuote,

@@ -1,6 +1,4 @@
-/**
- * Near chain DEX aggregator implementation
- */
+/** NEAR DEX router implementation (FindPath for routing + REF for execution). */
 
 import Big from "big.js";
 import {
@@ -47,7 +45,7 @@ export class NearSmartRouter implements DexRouter {
   }
 
   /**
-   * Get quote for token swap
+   * Get a swap quote (normalizes token ids and queries FindPath for routes).
    */
   async quote(params: QuoteParams): Promise<QuoteResult> {
     try {
@@ -59,7 +57,6 @@ export class NearSmartRouter implements DexRouter {
         swapType: _swapType = "EXACT_INPUT", // Currently not used, reserved for future use
       } = params;
 
-      // Validate parameters
       if (!tokenIn?.address || !tokenOut?.address) {
         return {
           success: false,
@@ -73,7 +70,6 @@ export class NearSmartRouter implements DexRouter {
         };
       }
 
-      // Normalize token IDs
       const normalizedTokenIn = normalizeTokenId(
         tokenIn.address,
         this.wrapNearContractId
@@ -83,7 +79,6 @@ export class NearSmartRouter implements DexRouter {
         this.wrapNearContractId
       );
 
-      // Validate normalized addresses
       if (!normalizedTokenIn || !normalizedTokenOut) {
         logger.error("SmartRouter quote - Invalid token addresses:", {
           tokenIn: {
@@ -109,7 +104,6 @@ export class NearSmartRouter implements DexRouter {
         };
       }
 
-      // Convert slippage to basis points
       const slippageBps = convertSlippageToBasisPoints(slippage);
       const slippageDecimalForApi = slippageBps / 10000;
 
@@ -121,7 +115,6 @@ export class NearSmartRouter implements DexRouter {
         slippageBps,
       });
 
-      // Call findPath API
       const response = await this.findPathAdapter.findPath({
         tokenIn: normalizedTokenIn,
         tokenOut: normalizedTokenOut,
@@ -136,7 +129,6 @@ export class NearSmartRouter implements DexRouter {
         hasRoutes: !!response?.result_data?.routes?.length,
       });
 
-      // Check response
       if (
         response?.result_code !== 0 ||
         !response?.result_data?.routes?.length
@@ -156,7 +148,6 @@ export class NearSmartRouter implements DexRouter {
       const { routes: serverRoutes, amount_out } = response.result_data;
       const slippageDecimal = new Big(slippageBps).div(10000);
 
-      // Transform route format
       const routes: Route[] = serverRoutes.map((route: any) => ({
         pools: route.pools.map((pool: any) => ({
           pool_id: Number(pool.pool_id),
@@ -170,7 +161,6 @@ export class NearSmartRouter implements DexRouter {
         amountOut: route.amount_out || amount_out || "0",
       }));
 
-      // Calculate minimum output (considering slippage)
       const amountOut = new Big(amount_out || 0);
       const minAmountOut = amountOut
         .mul(new Big(1).minus(slippageDecimal))
@@ -202,7 +192,7 @@ export class NearSmartRouter implements DexRouter {
   }
 
   /**
-   * Execute token swap
+   * Execute a swap: optionally adds `storage_deposit` for the recipient, then calls REF via `ft_transfer_call`.
    */
   async executeSwap(params: ExecuteParams): Promise<ExecuteResult> {
     try {
@@ -215,25 +205,19 @@ export class NearSmartRouter implements DexRouter {
         };
       }
 
-      // Build swap actions list
-      // Use raw serverRoutes data
       const swapActions: any[] = [];
 
-      // Prefer raw rawRoutes if available
       const routesToUse = quote.rawRoutes || quote.routes;
 
       routesToUse.forEach((route: any) => {
         const pools = route.pools || [];
         pools.forEach((pool: any) => {
-          // Reference getSwapActionsList implementation: use raw pool object directly
-          // If amount_in is 0, remove the field
           const poolCopy = { ...pool };
 
           if (+(poolCopy?.amount_in || 0) == 0) {
             delete poolCopy.amount_in;
           }
 
-          // Ensure pool_id is a number
           poolCopy.pool_id = Number(poolCopy.pool_id);
 
           swapActions.push(poolCopy);
@@ -247,11 +231,8 @@ export class NearSmartRouter implements DexRouter {
         };
       }
 
-      // Determine recipient address (prefer depositAddress)
       const finalRecipient = depositAddress || recipient;
 
-      // Check if recipient address is registered in target token contract
-      // If not registered, call storage_deposit first to register account
       const transactions: any[] = [];
 
       if (finalRecipient && quote.tokenOut?.address) {
@@ -269,7 +250,6 @@ export class NearSmartRouter implements DexRouter {
           isRegistered = false;
         }
 
-        // If not registered, add storage_deposit transaction
         if (!isRegistered) {
           logger.debug("SmartRouter - Registering recipient account:", {
             contractId: quote.tokenOut.address,
@@ -289,16 +269,12 @@ export class NearSmartRouter implements DexRouter {
         }
       }
 
-      // Build REF Exchange message
-      // Note: According to REF Exchange docs, swap_out_recipient is optional
-      // If not present, tokens will be returned to the caller
       const swapMsg: any = {
         force: 0,
         actions: swapActions,
         skip_unwrap_near: false,
       };
 
-      // Only add swap_out_recipient when recipient address needs to be specified
       if (finalRecipient) {
         swapMsg.swap_out_recipient = finalRecipient;
       }
@@ -313,7 +289,6 @@ export class NearSmartRouter implements DexRouter {
         tokenOut: quote.tokenOut?.address,
       });
 
-      // Add ft_transfer_call transaction
       transactions.push({
         contractId: quote.tokenIn.address,
         methodName: "ft_transfer_call",
@@ -323,7 +298,8 @@ export class NearSmartRouter implements DexRouter {
           msg: JSON.stringify(swapMsg),
         },
         gas: "250",
-        expandDeposit: "1", // Use expandDeposit to pass 1 yoctoNEAR directly (in yoctoNEAR units)
+        // NEP-141 requires attaching 1 yoctoNEAR for certain calls.
+        expandDeposit: "1",
       });
 
       const result = await this.nearChainAdapter.call({

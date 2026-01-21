@@ -28,7 +28,8 @@ export interface QuoteParams {
   tokenIn: TokenInfo;
   tokenOut: TokenInfo;
   amountIn: string;
-  slippage: number; // basis points
+  /** Slippage tolerance in bps (e.g. 50 = 0.5%). */
+  slippage: number;
   swapType?: "EXACT_INPUT" | "EXACT_OUTPUT";
   recipient?: string;
 }

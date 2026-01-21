@@ -48,7 +48,7 @@ export class ExampleFindPathAdapter implements FindPathAdapter {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as FindPathResponse;
       return data;
     } catch (error: any) {
       console.error("FindPath request failed:", error);
@@ -104,7 +104,7 @@ export class ExampleIntentsQuotationAdapter
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as IntentsQuoteResult;
       return data;
     } catch (error: any) {
       console.error("Intents quotation failed:", error);
@@ -120,10 +120,11 @@ export class ExampleIntentsQuotationAdapter
  * Near chain interaction adapter example (using near-api-js)
  */
 export class ExampleNearChainAdapter implements NearChainAdapter {
-  private account: any; // near-api-js Account instance
+  private _account: any; // near-api-js Account instance
 
   constructor(account: any) {
-    this.account = account;
+    this._account = account;
+    void this._account;
   }
 
   async call(params: {
@@ -143,7 +144,7 @@ export class ExampleNearChainAdapter implements NearChainAdapter {
     try {
       // Here you need to call contracts based on your Near wallet implementation
       // Example uses near-api-js
-      const actions = params.transactions.map((tx) => {
+      const _actions = params.transactions.map((tx) => {
         if (tx.methodName === "ft_transfer_call") {
           // Use near-api-js's ftTransferCall
           // This is just an example, actual implementation depends on your wallet library
@@ -170,6 +171,7 @@ export class ExampleNearChainAdapter implements NearChainAdapter {
         // Other methods...
         return null;
       });
+      void _actions;
 
       // Execute transaction
       // const result = await this.account.signAndSendTransaction({
@@ -191,7 +193,7 @@ export class ExampleNearChainAdapter implements NearChainAdapter {
     }
   }
 
-  async view(params: {
+  async view(_params: {
     contractId: string;
     methodName: string;
     args?: any;
@@ -247,7 +249,8 @@ export class ExampleConfigAdapter implements ConfigAdapter {
     return this.findPathUrl;
   }
 
-  getTokenStorageDepositRead(): string | undefined {
-    return this.tokenStorageDepositRead;
+  getTokenStorageDepositRead(): string {
+    // Default storage deposit (yoctoNEAR) used for FT `storage_deposit`.
+    return this.tokenStorageDepositRead || "1250000000000000000000";
   }
 }
