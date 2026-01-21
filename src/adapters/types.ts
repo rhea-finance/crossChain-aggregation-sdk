@@ -20,6 +20,39 @@ export interface FindPathAdapter {
   }): Promise<FindPathResponse>;
 }
 
+/** SmartX swapMultiDexPath response. */
+export interface SwapMultiDexPathResponse {
+  result_code: number;
+  result_message?: string;
+  result_data: {
+    amount_in: string;
+    amount_out: string;
+    min_amount_out: string;
+    dexs?: string[];
+    msg?: string;
+    signature?: string;
+    tokens?: string[];
+    [key: string]: any;
+  } | null;
+}
+
+/** Adapter for querying SmartX swapMultiDexPath. */
+export interface SwapMultiDexPathAdapter {
+  swapMultiDexPath(params: {
+    amountIn: string;
+    tokenIn: string;
+    tokenOut: string;
+    slippage: number;
+    pathDeep: number; // SmartX expects 2
+    chainId: number; // e.g. 0
+    routerCount: number;
+    skipUnwrapNativeToken: boolean;
+    user: string;
+    receiveUser: string;
+    [key: string]: any;
+  }): Promise<SwapMultiDexPathResponse>;
+}
+
 /** NearIntents quote result. */
 export interface IntentsQuoteResult {
   quoteStatus: "success" | "error";
@@ -83,4 +116,7 @@ export interface ConfigAdapter {
 
   /** Storage deposit amount (yoctoNEAR) for `storage_deposit` when needed. */
   getTokenStorageDepositRead?(): string;
+
+  /** Aggregate DEX contract id for SmartX execution. */
+  getAggregateDexContractId?(): string;
 }

@@ -38,11 +38,33 @@ import {
 const findPathAdapter: FindPathAdapter = {
   async findPath(params) {
     const response = await fetch(
-      `https://smartrouter.ref.finance/findPath?${new URLSearchParams({
+      `https://smartrouter.rhea.finance/findPath?${new URLSearchParams({
+        amountIn: params.amountIn,
+        tokenIn: params.tokenIn,
+        tokenOut: params.tokenOut,
+        pathDeep: "3",
+        slippage: String(params.slippage),
+      })}`
+    );
+    return response.json();
+  },
+};
+
+// SmartX swapMultiDexPath adapter (optional, used to compare and show the best quote)
+const swapMultiDexPathAdapter = {
+  async swapMultiDexPath(params: any) {
+    const response = await fetch(
+      `https://smartx.rhea.finance/swapMultiDexPath?${new URLSearchParams({
         amountIn: params.amountIn,
         tokenIn: params.tokenIn,
         tokenOut: params.tokenOut,
         slippage: String(params.slippage),
+        pathDeep: "2",
+        chainId: "0",
+        routerCount: "1",
+        skipUnwrapNativeToken: "false",
+        user: params.user,
+        receiveUser: params.receiveUser,
       })}`
     );
     return response.json();
@@ -88,6 +110,7 @@ import { NearSmartRouter } from "@rhea-finance/cross-chain-aggregation-dex";
 
 const router = new NearSmartRouter({
   findPathAdapter,
+  swapMultiDexPathAdapter,
   nearChainAdapter,
   configAdapter,
 });

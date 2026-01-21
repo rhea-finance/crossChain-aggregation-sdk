@@ -48,6 +48,18 @@ export interface QuoteResult {
    * - Kept optional to avoid tightly coupling implementation details into core logic
    */
   rawRoutes?: any[];
+  /** Quote source identifier (used when multiple quote backends are supported). */
+  quoteSource?: "findPath" | "smartx";
+  /** SmartX quote payload (present when quoteSource === "smartx"). */
+  smartxResult?: {
+    amountIn: string;
+    amountOut: string;
+    minAmountOut: string;
+    dexs?: string[];
+    msg?: string;
+    signature?: string;
+    tokens?: string[];
+  };
   priceImpact?: number;
   avgFee?: number;
   estimatedGas?: string;

@@ -5,10 +5,12 @@
 
 import {
   FindPathAdapter,
+  SwapMultiDexPathAdapter,
   IntentsQuotationAdapter,
   NearChainAdapter,
   ConfigAdapter,
   FindPathResponse,
+  SwapMultiDexPathResponse,
   IntentsQuoteResult,
 } from "../adapters/types";
 
@@ -33,7 +35,8 @@ export class ExampleFindPathAdapter implements FindPathAdapter {
       amountIn: params.amountIn,
       tokenIn: params.tokenIn,
       tokenOut: params.tokenOut,
-      pathDeep: String(params.supportLedger ? 1 : 2),
+      // v1 uses pathDeep=3
+      pathDeep: "3",
       slippage: String(params.slippage),
     });
 
@@ -52,6 +55,60 @@ export class ExampleFindPathAdapter implements FindPathAdapter {
       return data;
     } catch (error: any) {
       console.error("FindPath request failed:", error);
+      return {
+        result_code: 1007,
+        result_message: error?.message || "internal error",
+        result_data: null,
+      };
+    }
+  }
+}
+
+/** SmartX swapMultiDexPath adapter example. */
+export class ExampleSwapMultiDexPathAdapter implements SwapMultiDexPathAdapter {
+  private smartxUrl: string;
+
+  constructor(smartxUrl: string) {
+    this.smartxUrl = smartxUrl;
+  }
+
+  async swapMultiDexPath(params: {
+    amountIn: string;
+    tokenIn: string;
+    tokenOut: string;
+    slippage: number;
+    pathDeep: number;
+    chainId: number;
+    routerCount: number;
+    skipUnwrapNativeToken: boolean;
+    user: string;
+    receiveUser: string;
+    [key: string]: any;
+  }): Promise<SwapMultiDexPathResponse> {
+    const urlParams = new URLSearchParams({
+      amountIn: params.amountIn,
+      tokenIn: params.tokenIn,
+      tokenOut: params.tokenOut,
+      slippage: String(params.slippage),
+      pathDeep: String(params.pathDeep),
+      chainId: String(params.chainId),
+      routerCount: String(params.routerCount),
+      skipUnwrapNativeToken: String(params.skipUnwrapNativeToken),
+      user: params.user,
+      receiveUser: params.receiveUser,
+    });
+
+    const url = `${this.smartxUrl}/swapMultiDexPath?${urlParams.toString()}`;
+    try {
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return (await response.json()) as SwapMultiDexPathResponse;
+    } catch (error: any) {
+      console.error("swapMultiDexPath request failed:", error);
       return {
         result_code: 1007,
         result_message: error?.message || "internal error",
@@ -224,17 +281,20 @@ export class ExampleConfigAdapter implements ConfigAdapter {
   private wrapNearContractId: string;
   private findPathUrl: string;
   private tokenStorageDepositRead?: string;
+  private aggregateDexContractId?: string;
 
   constructor(config: {
     refExchangeId: string;
     wrapNearContractId: string;
     findPathUrl: string;
     tokenStorageDepositRead?: string;
+    aggregateDexContractId?: string;
   }) {
     this.refExchangeId = config.refExchangeId;
     this.wrapNearContractId = config.wrapNearContractId;
     this.findPathUrl = config.findPathUrl;
     this.tokenStorageDepositRead = config.tokenStorageDepositRead;
+    this.aggregateDexContractId = config.aggregateDexContractId;
   }
 
   getRefExchangeId(): string {
@@ -252,5 +312,9 @@ export class ExampleConfigAdapter implements ConfigAdapter {
   getTokenStorageDepositRead(): string {
     // Default storage deposit (yoctoNEAR) used for FT `storage_deposit`.
     return this.tokenStorageDepositRead || "1250000000000000000000";
+  }
+
+  getAggregateDexContractId(): string {
+    return this.aggregateDexContractId || "aggregatedex.near";
   }
 }
