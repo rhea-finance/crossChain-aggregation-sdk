@@ -138,6 +138,8 @@ export async function completeQuote(
       amountIn,
       slippage,
       swapType: "EXACT_INPUT",
+      recipient: recipient || refundTo,
+      refundTo,
     });
 
     if (!preSwapQuote.success) {

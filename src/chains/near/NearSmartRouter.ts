@@ -64,7 +64,6 @@ export class NearSmartRouter implements DexRouter {
         slippage,
         swapType: _swapType = "EXACT_INPUT", // Currently not used, reserved for future use
         recipient,
-        accountId,
       } = params;
 
       if (!tokenIn?.address || !tokenOut?.address) {
@@ -117,8 +116,8 @@ export class NearSmartRouter implements DexRouter {
       const slippageBps = convertSlippageToBasisPoints(slippage);
       const slippageDecimalForApi = slippageBps / 10000;
 
-      // SmartX user/receiveUser fallback: recipient first, then accountId; if both missing, skip SmartX.
-      const smartxUser = recipient || accountId || "";
+      // SmartX user/receiveUser fallback: recipient -> refundTo; if both missing, skip SmartX.
+      const smartxUser = recipient || params.refundTo || "";
       const canCallSmartX = this.swapMultiDexPathAdapter && !!smartxUser;
 
       logger.debug("SmartRouter quote - Calling quote backends:", {
@@ -491,7 +490,7 @@ export class NearSmartRouter implements DexRouter {
         if (!isRegistered) {
           logger.debug("SmartRouter - Registering recipient account:", {
             contractId: quote.tokenOut.address,
-            accountId: finalRecipient,
+            account_id: finalRecipient,
           });
 
           transactions.push({
