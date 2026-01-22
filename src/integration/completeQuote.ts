@@ -21,8 +21,6 @@ export interface CompleteQuoteParams {
   slippage: number;
   recipient: string;
   refundTo?: string;
-  /** Optional: Deposit address from intents. If provided, will be passed to dexRouter.quote() for SmartX second call. */
-  depositAddress?: string;
 }
 
 export interface CompleteQuoteResult {
@@ -73,7 +71,6 @@ export async function completeQuote(
     slippage,
     recipient,
     refundTo,
-    depositAddress: providedDepositAddress,
   } = params;
 
   const { intentsQuotationAdapter, dexRouter, bluechipTokens, configAdapter } =
@@ -141,9 +138,6 @@ export async function completeQuote(
       amountIn,
       slippage,
       swapType: "EXACT_INPUT",
-      recipient: recipient || refundTo,
-      refundTo,
-      depositAddress: providedDepositAddress, // Pass depositAddress to enable SmartX second call
     });
 
     if (!preSwapQuote.success) {
@@ -289,11 +283,8 @@ export async function completeQuote(
     throw new Error(`Intents quote failed: ${errorMessage}`);
   }
 
-  // Use provided depositAddress if available, otherwise get from intents
   const depositAddress =
-    providedDepositAddress ||
-    intentsQuote.quoteSuccessResult?.quote?.depositAddress ||
-    "";
+    intentsQuote.quoteSuccessResult?.quote?.depositAddress || "";
 
   if (!depositAddress) {
     throw new Error("Deposit address not found in intents quote");

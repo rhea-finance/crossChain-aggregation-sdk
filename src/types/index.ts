@@ -32,10 +32,6 @@ export interface QuoteParams {
   slippage: number;
   swapType?: "EXACT_INPUT" | "EXACT_OUTPUT";
   recipient?: string;
-  /** Fallback account for SmartX user/receiveUser when recipient is absent. */
-  refundTo?: string;
-  /** Optional: Deposit address from intents. If provided, will be used for SmartX second call. */
-  depositAddress?: string;
 }
 
 export interface QuoteResult {
@@ -52,24 +48,10 @@ export interface QuoteResult {
    * - Kept optional to avoid tightly coupling implementation details into core logic
    */
   rawRoutes?: any[];
-  /** Quote source identifier (used when multiple quote backends are supported). */
-  quoteSource?: "findPath" | "smartx";
-  /** SmartX quote payload (present when quoteSource === "smartx"). */
-  smartxResult?: {
-    amountIn: string;
-    amountOut: string;
-    minAmountOut: string;
-    dexs?: string[];
-    msg?: string;
-    signature?: string;
-    tokens?: string[];
-  };
   priceImpact?: number;
   avgFee?: number;
   estimatedGas?: string;
   error?: string;
-  /** Optional: Deposit address for cross-chain swaps (e.g., from Intents). Passed from quote to executeSwap. */
-  depositAddress?: string;
 }
 
 export interface ExecuteParams {
