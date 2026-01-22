@@ -1,6 +1,6 @@
 {
   "name": "@rhea-finance/cross-chain-aggregation-dex",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Cross-chain DEX aggregation SDK for multi-chain token swaps and routing",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

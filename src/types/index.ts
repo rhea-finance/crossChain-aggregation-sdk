@@ -34,6 +34,8 @@ export interface QuoteParams {
   recipient?: string;
   /** Fallback account for SmartX user/receiveUser when recipient is absent. */
   refundTo?: string;
+  /** Optional: Deposit address from intents. If provided, will be used for SmartX second call. */
+  depositAddress?: string;
 }
 
 export interface QuoteResult {
@@ -66,6 +68,8 @@ export interface QuoteResult {
   avgFee?: number;
   estimatedGas?: string;
   error?: string;
+  /** Optional: Deposit address for cross-chain swaps (e.g., from Intents). Passed from quote to executeSwap. */
+  depositAddress?: string;
 }
 
 export interface ExecuteParams {
