@@ -24,7 +24,10 @@ export interface PoolInfo {
   fee?: number;
 }
 
-export interface QuoteParams {
+/**
+ * Base quote parameters (common to all routers)
+ */
+export interface BaseQuoteParams {
   tokenIn: TokenInfo;
   tokenOut: TokenInfo;
   amountIn: string;
@@ -32,6 +35,37 @@ export interface QuoteParams {
   slippage: number;
   swapType?: "EXACT_INPUT" | "EXACT_OUTPUT";
   recipient?: string;
+}
+
+/**
+ * Simple quote parameters (V1 NEAR, etc., no recipient required)
+ */
+export interface SimpleQuoteParams extends BaseQuoteParams {
+}
+
+/**
+ * Recipient quote parameters (V2 NEAR, EVM, etc., recipient required)
+ */
+export interface RecipientQuoteParams extends BaseQuoteParams {
+  /** Sender address (current user) */
+  sender: string;
+  /** Recipient address (equals sender during quote, equals depositAddress during execution) */
+  recipient: string;
+}
+
+/**
+ * Unified quote parameters (union type)
+ * Supports both simple and recipient modes
+ */
+export type QuoteParams = SimpleQuoteParams | RecipientQuoteParams;
+
+/**
+ * Type guard: check if recipient parameters are required
+ */
+export function requiresRecipient(
+  params: QuoteParams
+): params is RecipientQuoteParams {
+  return "sender" in params && "recipient" in params;
 }
 
 export interface QuoteResult {
@@ -52,13 +86,53 @@ export interface QuoteResult {
   avgFee?: number;
   estimatedGas?: string;
   error?: string;
+  
+  // V2 Router specific fields (NEAR, EVM, etc.)
+  routerMsg?: string;
+  signature?: string;
+  tokens?: string[];
+  dexs?: string[];
+  recipient?: string;
+  slippage?: number;
+  
+  // EVM-specific fields (future extension)
+  transactionData?: string;
+  gasEstimate?: string;
 }
 
-export interface ExecuteParams {
+/**
+ * Base execute parameters (common to all routers)
+ */
+export interface BaseExecuteParams {
   quote: QuoteResult;
   recipient: string;
   depositAddress?: string;
   deadline?: number;
+}
+
+/**
+ * Recipient execute parameters (V2 NEAR, EVM, etc.)
+ */
+export interface RecipientExecuteParams extends BaseExecuteParams {
+  /** Sender address (current user) */
+  sender: string;
+  /** Recipient address (usually depositAddress) */
+  receiveUser: string;
+}
+
+/**
+ * Unified execute parameters (union type)
+ * Supports both simple and recipient modes
+ */
+export type ExecuteParams = BaseExecuteParams | RecipientExecuteParams;
+
+/**
+ * Type guard: check if execute parameters require recipient
+ */
+export function requiresRecipientInExecute(
+  params: ExecuteParams
+): params is RecipientExecuteParams {
+  return "sender" in params && "receiveUser" in params;
 }
 
 export interface ExecuteResult {
@@ -71,14 +145,57 @@ export interface ExecuteResult {
 export type SupportedChain = "near" | "evm" | "solana";
 
 /**
+ * Router capabilities
+ * Used to declare router features and requirements
+ */
+export interface RouterCapabilities {
+  /** Whether recipient parameters (sender/recipient) are required */
+  requiresRecipient: boolean;
+  /** Whether two API calls are needed (quote + finalize) */
+  requiresFinalizeQuote: boolean;
+  /** Whether complex token registration is required */
+  requiresComplexRegistration: boolean;
+  /** Supported chain */
+  supportedChain: SupportedChain | string;
+}
+
+/**
  * DEX aggregator router abstract interface
  * Each chain/aggregator implements its own quote/executeSwap
+ * 
+ * Extended to support common architecture:
+ * - Capabilities (RouterCapabilities)
+ * - Optional finalize quote method (finalizeQuote)
+ * - Unified parameter interface (supports both simple and recipient modes)
  */
 export interface DexRouter {
-  /** Router's chain (near/evm/solana...) */
+  getCapabilities(): RouterCapabilities;
+  
   getSupportedChain(): SupportedChain | string;
+  
+  /**
+   * Quote method
+   * - Simple router: only needs BaseQuoteParams
+   * - Recipient router: needs RecipientQuoteParams
+   */
   quote(params: QuoteParams): Promise<QuoteResult>;
+  
+  /**
+   * Execute swap
+   * - Simple router: only needs BaseExecuteParams
+   * - Recipient router: needs RecipientExecuteParams
+   */
   executeSwap(params: ExecuteParams): Promise<ExecuteResult>;
+  
+  /**
+   * Finalize quote (if two API calls are needed)
+   * - Only implemented when requiresFinalizeQuote = true
+   * - Used to call API again after getting depositAddress
+   */
+  finalizeQuote?(
+    params: QuoteParams,
+    depositAddress: string
+  ): Promise<QuoteResult>;
 }
 
 /**

@@ -73,6 +73,37 @@ export interface NearChainAdapter {
   }): Promise<any>;
 }
 
+/** V2 Router API response. */
+export interface SwapMultiDexPathResponse {
+  result_code: number;
+  result_message?: string;
+  result_data: {
+    amount_in: string;
+    amount_out: string;
+    min_amount_out: string;
+    msg: string;
+    signature: string;
+    tokens: string[];
+    dexs: string[];
+  } | null;
+}
+
+/** Adapter for V2 Router API (swapMultiDexPath). */
+export interface SwapMultiDexPathAdapter {
+  swapMultiDexPath(params: {
+    amountIn: string;
+    tokenIn: string;
+    tokenOut: string;
+    slippage: number;
+    pathDeep?: number;
+    chainId?: number;
+    routerCount?: number;
+    user: string;
+    receiveUser: string;
+    skipUnwrapNativeToken?: boolean;
+  }): Promise<SwapMultiDexPathResponse>;
+}
+
 /** Chain-specific configuration provider. */
 export interface ConfigAdapter {
   getRefExchangeId(): string;
@@ -83,4 +114,7 @@ export interface ConfigAdapter {
 
   /** Storage deposit amount (yoctoNEAR) for `storage_deposit` when needed. */
   getTokenStorageDepositRead?(): string;
+  
+  getAggregateDexContractId?(): string;
+  getSmartxUrl?(): string;
 }

@@ -179,4 +179,114 @@ export function normalizeDestinationAsset(
   return assetId;
 }
 
+/**
+ * Format gas value from yoctoNEAR to Tgas string, avoiding scientific notation.
+ * @param gasInYoctoNEAR Gas value in yoctoNEAR (string or number)
+ * @returns Formatted gas string in Tgas units (e.g., "795" for 795 Tgas)
+ */
+export function formatGasToTgas(gasInYoctoNEAR: string | number): string {
+  if (!gasInYoctoNEAR) return "0";
+  
+  // Convert to string first to handle both string and number inputs
+  const gasStr = String(gasInYoctoNEAR);
+  
+  // Check if it's already in scientific notation
+  if (/[eE]/.test(gasStr)) {
+    // Parse scientific notation manually to avoid precision loss
+      const match = gasStr.match(/^([+-]?\d*\.?\d+)[eE]([+-]?\d+)$/);
+      if (match) {
+        const base = match[1];
+        const exponent = parseInt(match[2], 10);
+        const [intPart, fracPart = ""] = base.split(".");
+      
+      if (exponent > 0) {
+        // Positive exponent: move decimal point right
+        const newIntPart = intPart + fracPart;
+        const zerosToAdd = exponent - fracPart.length;
+        if (zerosToAdd > 0) {
+          return (newIntPart + "0".repeat(zerosToAdd)).replace(/^0+/, "") || "0";
+        } else {
+          const pointPos = intPart.length + exponent;
+          return (newIntPart.slice(0, pointPos) + "." + newIntPart.slice(pointPos)).replace(/\.?0+$/, "");
+        }
+      }
+    }
+  }
+  
+  // Convert yoctoNEAR to Tgas (1 Tgas = 10^12 yoctoNEAR)
+  // Use BigInt for precise integer division
+  try {
+    const gasBigInt = BigInt(gasStr.split(".")[0]); // Take integer part only
+    const tgasBigInt = gasBigInt / BigInt("1000000000000");
+    return tgasBigInt.toString();
+  } catch (error) {
+    logger.error("formatGasToTgas - Error formatting gas:", {
+      gasInYoctoNEAR,
+      error,
+    });
+    return "0";
+  }
+}
+
+/**
+ * Ensure gas value is a string without scientific notation.
+ * This is used to format gas values before passing to wallet selector.
+ * @param gas Gas value (string, number, or BigInt)
+ * @returns Formatted gas string in yoctoNEAR
+ */
+export function formatGasString(gas: string | number | bigint): string {
+  if (typeof gas === "bigint") {
+    return gas.toString();
+  }
+  
+  const gasStr = String(gas);
+  
+  // If already a clean string without scientific notation, return as is
+  if (!/[eE]/.test(gasStr) && !gasStr.includes(".")) {
+    return gasStr;
+  }
+  
+  // Handle scientific notation
+  if (/[eE]/.test(gasStr)) {
+    // Use manual parsing to avoid precision loss
+    const match = gasStr.match(/^([+-]?\d*\.?\d+)[eE]([+-]?\d+)$/);
+    if (match) {
+      const base = match[1];
+      const exponent = parseInt(match[2], 10);
+      const [intPart, fracPart = ""] = base.split(".");
+      
+      if (exponent > 0) {
+        // Positive exponent: move decimal point right
+        const newIntPart = intPart + fracPart;
+        const zerosToAdd = exponent - fracPart.length;
+        if (zerosToAdd > 0) {
+          return (newIntPart + "0".repeat(zerosToAdd)).replace(/^0+/, "") || "0";
+        } else {
+          const pointPos = intPart.length + exponent;
+          const result = newIntPart.slice(0, pointPos) + "." + newIntPart.slice(pointPos);
+          return result.replace(/\.?0+$/, "").replace(/\.$/, "");
+        }
+      } else if (exponent < 0) {
+        // Negative exponent: move decimal point left
+        const absExp = Math.abs(exponent);
+        const zerosToAdd = absExp - intPart.length;
+        if (zerosToAdd > 0) {
+          return "0." + "0".repeat(zerosToAdd - 1) + intPart.replace(/^-/, "") + fracPart;
+        } else {
+          const pointPos = intPart.length - absExp;
+          return intPart.slice(0, pointPos) + "." + intPart.slice(pointPos) + fracPart;
+        }
+      }
+    }
+  }
+  
+  // Handle decimal numbers - convert to integer string
+  if (gasStr.includes(".")) {
+    const [intPart, fracPart = ""] = gasStr.split(".");
+    return intPart + fracPart;
+  }
+  
+  return gasStr;
+}
+
 export { logger } from "./logger";

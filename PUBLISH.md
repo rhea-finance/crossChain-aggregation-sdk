@@ -4,7 +4,7 @@
 
 1. Visit https://github.com/rhea-finance
 2. Click "New repository"
-3. Repository name: `crossChain-aggregation-dex`
+3. Repository name: `crossChain-aggregation-sdk`
 4. Description: `Cross-chain DEX aggregation SDK for multi-chain token swaps and routing`
 5. Select Public
 6. Do not initialize README, .gitignore, or license (we already have them)
@@ -13,13 +13,13 @@
 ## Initialize Git and Push Code
 
 ```bash
-cd cross-chain-dex-aggregator-sdk
+cd crossChain-aggregation-sdk
 
 # Initialize Git
 git init
 
 # Add remote repository
-git remote add origin https://github.com/rhea-finance/crossChain-aggregation-dex.git
+git remote add origin https://github.com/rhea-finance/crossChain-aggregation-sdk.git
 
 # Add all files
 git add .

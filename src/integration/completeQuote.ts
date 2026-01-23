@@ -1,7 +1,13 @@
 /** Composite quote: optional NEAR DEX pre-swap + NearIntents quote. */
 
 import Big from "big.js";
-import { TokenInfo, QuoteResult, DexRouter, BluechipTokensConfig } from "../types";
+import {
+  TokenInfo,
+  QuoteResult,
+  DexRouter,
+  BluechipTokensConfig,
+  QuoteParams,
+} from "../types";
 import {
   isNearIntentsSupportedToken,
   findBestBluechipToken,
@@ -42,11 +48,13 @@ export interface CompleteQuoteResult {
 
 export interface CompleteQuoteConfig {
   intentsQuotationAdapter: IntentsQuotationAdapter;
-  dexRouter: DexRouter;
+  dexRouters?: DexRouter[];
+  dexRouter?: DexRouter;
   bluechipTokens: BluechipTokensConfig;
   configAdapter: {
     getWrapNearContractId(): string;
   };
+  currentUserAddress?: string;
 }
 
 /**
@@ -73,9 +81,25 @@ export async function completeQuote(
     refundTo,
   } = params;
 
-  const { intentsQuotationAdapter, dexRouter, bluechipTokens, configAdapter } =
-    config;
+  const {
+    intentsQuotationAdapter,
+    dexRouters,
+    dexRouter,
+    bluechipTokens,
+    configAdapter,
+    currentUserAddress,
+  } = config;
   const wrapNearContractId = configAdapter.getWrapNearContractId();
+
+  const routers = dexRouters || (dexRouter ? [dexRouter] : []);
+  if (routers.length === 0) {
+    throw new Error("At least one DEX router is required");
+  }
+
+  const userAddress = currentUserAddress || recipient;
+  if (!userAddress) {
+    throw new Error("currentUserAddress or recipient is required for V2 Router");
+  }
 
   if (!sourceToken?.address) {
     throw new Error("Source token address is required");
@@ -108,6 +132,7 @@ export async function completeQuote(
   });
 
   let preSwapQuote: QuoteResult | null = null;
+  let bestRouter: DexRouter | null = null;
 
   if (needsPreSwap) {
     if (!sourceToken?.address) {
@@ -125,29 +150,78 @@ export async function completeQuote(
       },
       amountIn,
       slippage,
+      routersCount: routers.length,
+      userAddress,
     });
 
-    if (!dexRouter) {
+    const quotes = await Promise.allSettled(
+      routers.map((router) => {
+        const capabilities = router.getCapabilities();
+
+        const quoteParams: QuoteParams = capabilities.requiresRecipient
+          ? {
+              tokenIn: sourceToken,
+              tokenOut: bluechipToken,
+              amountIn,
+              slippage,
+              swapType: "EXACT_INPUT",
+              sender: userAddress,
+              recipient: userAddress,
+            }
+          : {
+              tokenIn: sourceToken,
+              tokenOut: bluechipToken,
+              amountIn,
+              slippage,
+              swapType: "EXACT_INPUT",
+            };
+
+        return router.quote(quoteParams);
+      })
+    );
+
+    const validQuotes = quotes
+      .filter(
+        (r): r is PromiseFulfilledResult<QuoteResult> =>
+          r.status === "fulfilled" && r.value.success
+      )
+      .map((r) => r.value);
+
+    if (validQuotes.length === 0) {
+      const errors = quotes
+        .map((r, index) => {
+          if (r.status === "rejected") {
+            return `Router ${index}: ${r.reason}`;
+          }
+          if (r.status === "fulfilled" && !r.value.success) {
+            return `Router ${index}: ${r.value.error}`;
+          }
+          return null;
+        })
+        .filter(Boolean);
+      logger.error("DEX Aggregator - All router quotes failed:", errors);
       throw new Error(
-        `No DEX router registered for sourceChain=${sourceChain}`
+        `All router quotes failed: ${errors.join("; ")}`
       );
     }
-    preSwapQuote = await dexRouter.quote({
-      tokenIn: sourceToken,
-      tokenOut: bluechipToken,
-      amountIn,
-      slippage,
-      swapType: "EXACT_INPUT",
+
+    const bestQuote = validQuotes.reduce((best, current) => {
+      const bestAmount = new Big(best.amountOut);
+      const currentAmount = new Big(current.amountOut);
+      return currentAmount.gt(bestAmount) ? current : best;
     });
 
-    if (!preSwapQuote.success) {
-      logger.error("DEX Aggregator - Pre-swap quote failed:", {
-        error: preSwapQuote.error,
-        tokenIn: sourceToken,
-        tokenOut: bluechipToken,
-      });
-      throw new Error(`Pre-swap quote failed: ${preSwapQuote.error}`);
-    }
+    const bestQuoteIndex = validQuotes.indexOf(bestQuote);
+    bestRouter = routers[bestQuoteIndex];
+    preSwapQuote = bestQuote;
+
+    logger.debug("DEX Aggregator - Selected best router:", {
+      routerIndex: bestQuoteIndex,
+      amountOut: bestQuote.amountOut,
+      routerType: bestRouter.getCapabilities().requiresRecipient
+        ? "V2 (Recipient)"
+        : "V1 (Simple)",
+    });
 
     const preSwapAmountOut = preSwapQuote.amountOut;
     if (!preSwapAmountOut || new Big(preSwapAmountOut).lte(0)) {
@@ -290,17 +364,20 @@ export async function completeQuote(
     throw new Error("Deposit address not found in intents quote");
   }
 
+  // executeSwap will automatically fetch final quote using receiveUser (depositAddress)
+  const finalQuote = preSwapQuote;
+
   return {
     intents: {
       quote: intentsQuote,
       depositAddress,
     },
-    preSwap: needsPreSwap
+    preSwap: needsPreSwap && finalQuote && bestRouter
       ? {
-          quote: preSwapQuote!,
+          quote: finalQuote,
           tokenIn: sourceToken,
           tokenOut: bluechipToken,
-          executor: dexRouter,
+          executor: bestRouter,
         }
       : undefined,
     finalAmountOut: intentsQuote.quoteSuccessResult?.quote?.amountOut || "0",

@@ -5,5 +5,6 @@ export * from "./adapters/types";
 export * from "./utils";
 
 export * from "./chains/near/NearSmartRouter";
+export * from "./chains/near/AggregateDexRouter";
 
 export * from "./integration/completeQuote";

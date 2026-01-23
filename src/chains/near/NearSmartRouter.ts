@@ -8,6 +8,7 @@ import {
   ExecuteResult,
   Route,
   DexRouter,
+  RouterCapabilities,
 } from "../../types";
 import {
   normalizeTokenId,
@@ -325,6 +326,18 @@ export class NearSmartRouter implements DexRouter {
         error: error?.message || "Execute swap failed",
       };
     }
+  }
+
+  /**
+   * Get Router capabilities
+   */
+  getCapabilities(): RouterCapabilities {
+    return {
+      requiresRecipient: false,
+      requiresFinalizeQuote: false,
+      requiresComplexRegistration: false,
+      supportedChain: "near",
+    };
   }
 
   /**
