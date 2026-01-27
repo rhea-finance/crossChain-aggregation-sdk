@@ -289,4 +289,19 @@ export function formatGasString(gas: string | number | bigint): string {
   return gasStr;
 }
 
+import Big from "big.js";
+
+/**
+ * Select the best quote from multiple quotes based on maximum amountOut
+ */
+export function selectBestQuote<T extends { amountOut: string }, R = any>(
+  quotes: Array<{ quote: T; router: R }>
+): { quote: T; router: R } {
+  return quotes.reduce((best, current) => {
+    const bestAmount = new Big(best.quote.amountOut);
+    const currentAmount = new Big(current.quote.amountOut);
+    return currentAmount.gt(bestAmount) ? current : best;
+  });
+}
+
 export { logger } from "./logger";

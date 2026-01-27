@@ -8,3 +8,4 @@ export * from "./chains/near/NearSmartRouter";
 export * from "./chains/near/AggregateDexRouter";
 
 export * from "./integration/completeQuote";
+export * from "./integration/quoteSameChainSwap";

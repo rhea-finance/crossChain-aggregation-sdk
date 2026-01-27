@@ -40,10 +40,12 @@ export interface CompleteQuoteResult {
     tokenIn: TokenInfo;
     tokenOut: TokenInfo;
     executor: DexRouter;
+    routeType?: "v1" | "v2";
   };
   finalAmountOut: string;
   totalPriceImpact?: number;
   totalFee?: number;
+  routeType?: "v1" | "v2" | "intents"; // Route type used
 }
 
 export interface CompleteQuoteConfig {
@@ -55,6 +57,8 @@ export interface CompleteQuoteConfig {
     getWrapNearContractId(): string;
   };
   currentUserAddress?: string;
+  /** Optional function to check if token supports Intents (beyond bluechip tokens) */
+  isIntentsSupportedToken?: (token: TokenInfo) => boolean;
 }
 
 /**
@@ -88,6 +92,7 @@ export async function completeQuote(
     bluechipTokens,
     configAdapter,
     currentUserAddress,
+    isIntentsSupportedToken: customIsIntentsSupportedToken,
   } = config;
   const wrapNearContractId = configAdapter.getWrapNearContractId();
 
@@ -108,9 +113,12 @@ export async function completeQuote(
     throw new Error("Target token address is required");
   }
 
-  const needsPreSwap =
-    sourceChain === "near" &&
-    !isNearIntentsSupportedToken(sourceToken, bluechipTokens);
+  // Check if token supports Intents:
+  // 1. Custom checker (e.g., from nearTokenInList)
+  // 2. Bluechip token checker (fallback)
+  const isTokenIntentsSupported = customIsIntentsSupportedToken
+    ? customIsIntentsSupportedToken(sourceToken)
+    : isNearIntentsSupportedToken(sourceToken, bluechipTokens);
 
   const bluechipToken = findBestBluechipToken(
     bluechipTokens,
@@ -125,261 +133,271 @@ export async function completeQuote(
     throw new Error("Failed to find bluechip token address");
   }
 
-  logger.debug("DEX Aggregator - Using bluechip token:", {
-    address: bluechipToken.address,
-    symbol: bluechipToken.symbol,
-    decimals: bluechipToken.decimals,
+  // logger.debug("DEX Aggregator - Using bluechip token:", {
+  //   address: bluechipToken.address,
+  //   symbol: bluechipToken.symbol,
+  //   decimals: bluechipToken.decimals,
+  // });
+
+  // Prepare all quote paths for parallel execution
+  // If token supports Intents, we have 3 paths: V1+Intents, V2+Intents, Direct Intents
+  // If token doesn't support Intents, we have 2 paths: V1+Intents, V2+Intents
+  const quotePaths: Array<{
+    type: "v1" | "v2" | "intents";
+    promise: Promise<{
+      intentsQuote: any;
+      preSwapQuote?: QuoteResult;
+      router?: DexRouter;
+      finalAmountOut: string;
+    }>;
+    router?: DexRouter;
+  }> = [];
+
+  // Path 1 & 2: V1/V2 Router + Intents (always available)
+  routers.forEach((router, index) => {
+    const routeType: "v1" | "v2" = index === 0 ? "v1" : "v2";
+    const capabilities = router.getCapabilities();
+
+    const quoteParams: QuoteParams = capabilities.requiresRecipient
+      ? {
+          tokenIn: sourceToken,
+          tokenOut: bluechipToken,
+          amountIn,
+          slippage,
+          swapType: "EXACT_INPUT",
+          sender: userAddress,
+          recipient: userAddress,
+        }
+      : {
+          tokenIn: sourceToken,
+          tokenOut: bluechipToken,
+          amountIn,
+          slippage,
+          swapType: "EXACT_INPUT",
+        };
+
+    quotePaths.push({
+      type: routeType,
+      router,
+      promise: (async () => {
+        // Step 1: Get pre-swap quote
+        const preSwapQuote = await router.quote(quoteParams);
+        if (!preSwapQuote.success) {
+          throw new Error(
+            `${routeType} pre-swap failed: ${preSwapQuote.error}`
+          );
+        }
+
+        // Step 2: Get Intents quote with pre-swap output
+        const bluechipKey =
+          bluechipToken.symbol?.toUpperCase() === "WNEAR"
+            ? "NEAR"
+            : bluechipToken.symbol?.toUpperCase();
+        const bluechipTokenConfig =
+          (bluechipKey && bluechipTokens[bluechipKey]) || undefined;
+        const normalizedSourceAsset = bluechipTokenConfig?.assetId
+          ? bluechipTokenConfig.assetId
+          : `nep141:${bluechipToken.address}`;
+
+        let normalizedTargetAsset = targetToken.address;
+        if (
+          normalizedTargetAsset &&
+          !normalizedTargetAsset.startsWith("nep141:") &&
+          !normalizedTargetAsset.startsWith("nep245:") &&
+          normalizedTargetAsset.includes(".")
+        ) {
+          normalizedTargetAsset = `nep141:${normalizeTokenId(
+            normalizedTargetAsset,
+            wrapNearContractId
+          )}`;
+        }
+        normalizedTargetAsset =
+          normalizeDestinationAsset(normalizedTargetAsset, wrapNearContractId) ||
+          normalizedTargetAsset;
+
+        const slippageBps = convertSlippageToBasisPoints(slippage);
+        const intentsQuote = await intentsQuotationAdapter.quote({
+          originAsset: normalizedSourceAsset,
+          destinationAsset: normalizedTargetAsset,
+          amount: preSwapQuote.amountOut,
+          refundTo: refundTo || recipient,
+          recipient,
+          slippageTolerance: slippageBps,
+          swapType: "FLEX_INPUT",
+        });
+
+        if (intentsQuote.quoteStatus !== "success") {
+          throw new Error(
+            `${routeType} Intents quote failed: ${intentsQuote.message}`
+          );
+        }
+
+        return {
+          intentsQuote,
+          preSwapQuote,
+          router,
+          finalAmountOut:
+            intentsQuote.quoteSuccessResult?.quote?.amountOut || "0",
+        };
+      })(),
+    });
   });
 
-  let preSwapQuote: QuoteResult | null = null;
-  let bestRouter: DexRouter | null = null;
-
-  if (needsPreSwap) {
-    if (!sourceToken?.address) {
-      throw new Error("Source token address is required");
-    }
-
-    logger.debug("DEX Aggregator - Pre-swap quote params:", {
-      tokenIn: {
-        address: sourceToken.address,
-        symbol: sourceToken.symbol,
-      },
-      tokenOut: {
-        address: bluechipToken.address,
-        symbol: bluechipToken.symbol,
-      },
-      amountIn,
-      slippage,
-      routersCount: routers.length,
-      userAddress,
-    });
-
-    const quotes = await Promise.allSettled(
-      routers.map((router) => {
-        const capabilities = router.getCapabilities();
-
-        const quoteParams: QuoteParams = capabilities.requiresRecipient
-          ? {
-              tokenIn: sourceToken,
-              tokenOut: bluechipToken,
-              amountIn,
-              slippage,
-              swapType: "EXACT_INPUT",
-              sender: userAddress,
-              recipient: userAddress,
+  // Path 3: Direct Intents (only if token supports Intents)
+  if (isTokenIntentsSupported) {
+    quotePaths.push({
+      type: "intents",
+      promise: (async () => {
+        // Normalize source asset
+        let normalizedSourceAsset: string;
+        if (sourceToken.symbol) {
+          const sourceKey = sourceToken.symbol.toUpperCase();
+          const sourceTokenConfig = bluechipTokens[sourceKey];
+          if (sourceTokenConfig?.assetId) {
+            normalizedSourceAsset = sourceTokenConfig.assetId;
+          } else {
+            normalizedSourceAsset = normalizeTokenId(
+              sourceToken.address,
+              wrapNearContractId
+            );
+            if (!normalizedSourceAsset.startsWith("nep141:")) {
+              normalizedSourceAsset = `nep141:${normalizedSourceAsset}`;
             }
-          : {
-              tokenIn: sourceToken,
-              tokenOut: bluechipToken,
-              amountIn,
-              slippage,
-              swapType: "EXACT_INPUT",
-            };
+          }
+        } else {
+          normalizedSourceAsset = normalizeTokenId(
+            sourceToken.address,
+            wrapNearContractId
+          );
+          if (!normalizedSourceAsset.startsWith("nep141:")) {
+            normalizedSourceAsset = `nep141:${normalizedSourceAsset}`;
+          }
+        }
 
-        return router.quote(quoteParams);
+        // Normalize target asset
+        let normalizedTargetAsset = targetToken.address;
+        if (
+          normalizedTargetAsset &&
+          !normalizedTargetAsset.startsWith("nep141:") &&
+          !normalizedTargetAsset.startsWith("nep245:") &&
+          normalizedTargetAsset.includes(".")
+        ) {
+          normalizedTargetAsset = `nep141:${normalizeTokenId(
+            normalizedTargetAsset,
+            wrapNearContractId
+          )}`;
+        }
+        normalizedTargetAsset =
+          normalizeDestinationAsset(normalizedTargetAsset, wrapNearContractId) ||
+          normalizedTargetAsset;
+
+        const slippageBps = convertSlippageToBasisPoints(slippage);
+        const intentsQuote = await intentsQuotationAdapter.quote({
+          originAsset: normalizedSourceAsset,
+          destinationAsset: normalizedTargetAsset,
+          amount: amountIn,
+          refundTo: refundTo || recipient,
+          recipient,
+          slippageTolerance: slippageBps,
+          swapType: "EXACT_INPUT",
+        });
+
+        if (intentsQuote.quoteStatus !== "success") {
+          throw new Error(
+            `Direct Intents quote failed: ${intentsQuote.message}`
+          );
+        }
+
+        return {
+          intentsQuote,
+          finalAmountOut:
+            intentsQuote.quoteSuccessResult?.quote?.amountOut || "0",
+        };
+      })(),
+    });
+  }
+
+  // Execute all paths in parallel
+  const pathResults = await Promise.allSettled(
+    quotePaths.map((p) => p.promise)
+  );
+
+  // Process results
+  const validPaths: Array<{
+    type: "v1" | "v2" | "intents";
+    intentsQuote: any;
+    preSwapQuote?: QuoteResult;
+    router?: DexRouter;
+    finalAmountOut: string;
+  }> = [];
+
+  pathResults.forEach((result, index) => {
+    const pathType = quotePaths[index].type;
+    if (result.status === "fulfilled") {
+      validPaths.push({
+        type: pathType,
+        ...result.value,
+      });
+    } else {
+      logger.warn(`Path ${pathType} failed:`, result.reason);
+    }
+  });
+
+  // Log all path amounts for debugging (disabled)
+   logger.debug("Cross-chain Quote Comparison:", {
+    paths: validPaths.map((p) => ({
+       type: p.type.toUpperCase(),
+       finalAmountOut: p.finalAmountOut,
+     })),
+  });
+
+  if (validPaths.length === 0) {
+    const errors = pathResults
+      .map((r, index) => {
+        const pathType = quotePaths[index].type;
+        if (r.status === "rejected") {
+          return `${pathType}: ${r.reason}`;
+        }
+        return null;
       })
-    );
-
-    const validQuotes = quotes
-      .filter(
-        (r): r is PromiseFulfilledResult<QuoteResult> =>
-          r.status === "fulfilled" && r.value.success
-      )
-      .map((r) => r.value);
-
-    if (validQuotes.length === 0) {
-      const errors = quotes
-        .map((r, index) => {
-          if (r.status === "rejected") {
-            return `Router ${index}: ${r.reason}`;
-          }
-          if (r.status === "fulfilled" && !r.value.success) {
-            return `Router ${index}: ${r.value.error}`;
-          }
-          return null;
-        })
-        .filter(Boolean);
-      logger.error("DEX Aggregator - All router quotes failed:", errors);
-      throw new Error(
-        `All router quotes failed: ${errors.join("; ")}`
-      );
-    }
-
-    const bestQuote = validQuotes.reduce((best, current) => {
-      const bestAmount = new Big(best.amountOut);
-      const currentAmount = new Big(current.amountOut);
-      return currentAmount.gt(bestAmount) ? current : best;
-    });
-
-    const bestQuoteIndex = validQuotes.indexOf(bestQuote);
-    bestRouter = routers[bestQuoteIndex];
-    preSwapQuote = bestQuote;
-
-    logger.debug("DEX Aggregator - Selected best router:", {
-      routerIndex: bestQuoteIndex,
-      amountOut: bestQuote.amountOut,
-      routerType: bestRouter.getCapabilities().requiresRecipient
-        ? "V2 (Recipient)"
-        : "V1 (Simple)",
-    });
-
-    const preSwapAmountOut = preSwapQuote.amountOut;
-    if (!preSwapAmountOut || new Big(preSwapAmountOut).lte(0)) {
-      logger.error("DEX Aggregator - Pre-swap amountOut is invalid:", {
-        amountOut: preSwapAmountOut,
-        tokenIn: sourceToken,
-        tokenOut: bluechipToken,
-      });
-      throw new Error(
-        "Pre-swap returned invalid amount: amount is too small or zero"
-      );
-    }
-
-    logger.debug("DEX Aggregator - Pre-swap quote success:", {
-      amountOut: preSwapAmountOut,
-      tokenOut: bluechipToken.symbol,
-      decimals: bluechipToken.decimals,
-    });
+      .filter(Boolean);
+    throw new Error(`All quote paths failed: ${errors.join("; ")}`);
   }
 
-  let normalizedSourceAsset: string;
-  if (needsPreSwap) {
-    const bluechipKey =
-      bluechipToken.symbol?.toUpperCase() === "WNEAR"
-        ? "NEAR"
-        : bluechipToken.symbol?.toUpperCase();
-    const bluechipTokenConfig =
-      (bluechipKey && bluechipTokens[bluechipKey]) || undefined;
-    if (bluechipTokenConfig?.assetId) {
-      normalizedSourceAsset = bluechipTokenConfig.assetId;
-      logger.debug("Using bluechip token assetId for NearIntents:", {
-        symbol: bluechipToken.symbol,
-        assetId: normalizedSourceAsset,
-        contractAddress: bluechipToken.address,
-      });
-    } else {
-      normalizedSourceAsset = `nep141:${bluechipToken.address}`;
-      logger.warn(
-        "Bluechip token assetId not found, using contractAddress with prefix:",
-        {
-          symbol: bluechipToken.symbol,
-          normalizedSourceAsset,
-        }
-      );
-    }
-  } else {
-    if (sourceToken.symbol) {
-      const sourceKey = sourceToken.symbol.toUpperCase();
-      const sourceTokenConfig = bluechipTokens[sourceKey];
-      if (sourceTokenConfig?.assetId) {
-        normalizedSourceAsset = sourceTokenConfig.assetId;
-      } else {
-        normalizedSourceAsset = normalizeTokenId(
-          sourceToken.address,
-          wrapNearContractId
-        );
-        if (!normalizedSourceAsset.startsWith("nep141:")) {
-          normalizedSourceAsset = `nep141:${normalizedSourceAsset}`;
-        }
-      }
-    } else {
-      normalizedSourceAsset = normalizeTokenId(
-        sourceToken.address,
-        wrapNearContractId
-      );
-      if (!normalizedSourceAsset.startsWith("nep141:")) {
-        normalizedSourceAsset = `nep141:${normalizedSourceAsset}`;
-      }
-    }
-  }
-
-  let normalizedTargetAsset = targetToken.address;
-  if (
-    normalizedTargetAsset &&
-    !normalizedTargetAsset.startsWith("nep141:") &&
-    !normalizedTargetAsset.startsWith("nep245:") &&
-    normalizedTargetAsset.includes(".")
-  ) {
-    normalizedTargetAsset = `nep141:${normalizeTokenId(
-      normalizedTargetAsset,
-      wrapNearContractId
-    )}`;
-  }
-
-  normalizedTargetAsset =
-    normalizeDestinationAsset(normalizedTargetAsset, wrapNearContractId) ||
-    normalizedTargetAsset;
-
-  const slippageBps = convertSlippageToBasisPoints(slippage);
-  const intentsAmount = needsPreSwap ? preSwapQuote!.amountOut : amountIn;
-
-  logger.debug("DEX Aggregator - Calling NearIntents quotation:", {
-    originAsset: normalizedSourceAsset,
-    destinationAsset: normalizedTargetAsset,
-    amount: intentsAmount,
-    needsPreSwap,
-    preSwapAmountOut: needsPreSwap ? preSwapQuote!.amountOut : undefined,
+  // Select path with maximum finalAmountOut
+  const bestPath = validPaths.reduce((best, current) => {
+    const bestAmount = new Big(best.finalAmountOut);
+    const currentAmount = new Big(current.finalAmountOut);
+    return currentAmount.gt(bestAmount) ? current : best;
   });
 
-  const swapTypeForIntents = needsPreSwap ? "FLEX_INPUT" : undefined;
-
-  logger.debug("DEX Aggregator - swapType for NearIntents:", {
-    needsPreSwap,
-    swapType: swapTypeForIntents || "EXACT_INPUT (default)",
-  });
-
-  const intentsQuote = await intentsQuotationAdapter.quote({
-    originAsset: normalizedSourceAsset,
-    destinationAsset: normalizedTargetAsset,
-    amount: intentsAmount,
-    refundTo: refundTo || recipient,
-    recipient,
-    slippageTolerance: slippageBps,
-    swapType: swapTypeForIntents,
-  });
-
-  logger.debug("DEX Aggregator - NearIntents quotation result:", {
-    quoteStatus: intentsQuote.quoteStatus,
-    message: intentsQuote.message,
-    hasDepositAddress: !!intentsQuote.quoteSuccessResult?.quote?.depositAddress,
-  });
-
-  if (intentsQuote.quoteStatus !== "success") {
-    const errorMessage = intentsQuote.message || "Unknown error";
-    logger.error("DEX Aggregator - NearIntents quote failed:", {
-      error: errorMessage,
-      originAsset: normalizedSourceAsset,
-      destinationAsset: normalizedTargetAsset,
-      amount: intentsAmount,
-      needsPreSwap,
-      preSwapAmountOut: needsPreSwap ? preSwapQuote!.amountOut : undefined,
-    });
-    throw new Error(`Intents quote failed: ${errorMessage}`);
-  }
+   logger.debug(
+     `✓ Selected best path: [${bestPath.type.toUpperCase()}] with finalAmountOut: ${bestPath.finalAmountOut}`
+   );
 
   const depositAddress =
-    intentsQuote.quoteSuccessResult?.quote?.depositAddress || "";
+    bestPath.intentsQuote.quoteSuccessResult?.quote?.depositAddress || "";
 
   if (!depositAddress) {
     throw new Error("Deposit address not found in intents quote");
   }
 
-  // executeSwap will automatically fetch final quote using receiveUser (depositAddress)
-  const finalQuote = preSwapQuote;
-
   return {
     intents: {
-      quote: intentsQuote,
+      quote: bestPath.intentsQuote,
       depositAddress,
     },
-    preSwap: needsPreSwap && finalQuote && bestRouter
-      ? {
-          quote: finalQuote,
-          tokenIn: sourceToken,
-          tokenOut: bluechipToken,
-          executor: bestRouter,
-        }
-      : undefined,
-    finalAmountOut: intentsQuote.quoteSuccessResult?.quote?.amountOut || "0",
+    preSwap:
+      bestPath.preSwapQuote && bestPath.router
+        ? {
+            quote: bestPath.preSwapQuote,
+            tokenIn: sourceToken,
+            tokenOut: bluechipToken,
+            executor: bestPath.router,
+            routeType: bestPath.type as "v1" | "v2",
+          }
+        : undefined,
+    finalAmountOut: bestPath.finalAmountOut,
+    routeType: bestPath.type,
   };
 }
