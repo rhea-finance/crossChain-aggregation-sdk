@@ -159,15 +159,6 @@ export class AggregateDexRouter implements DexRouter {
       const slippageBps = convertSlippageToBasisPoints(slippage);
       const slippageDecimalForApi = slippageBps / 10000;
 
-      logger.debug("AggregateDexRouter quote - Calling swapMultiDexPath:", {
-        tokenIn: normalizedTokenIn,
-        tokenOut: normalizedTokenOut,
-        amountIn,
-        slippage: slippageDecimalForApi,
-        sender,
-        recipient,
-      });
-
       const response = await this.swapMultiDexPathAdapter.swapMultiDexPath({
         amountIn: String(amountIn),
         tokenIn: normalizedTokenIn,
@@ -176,12 +167,6 @@ export class AggregateDexRouter implements DexRouter {
         pathDeep: 2,
         user: sender,
         receiveUser: recipient,
-      });
-
-      logger.debug("AggregateDexRouter quote - swapMultiDexPath response:", {
-        result_code: response?.result_code,
-        result_message: response?.result_message,
-        hasData: !!response?.result_data,
       });
 
       if (response.result_code !== 0 || !response.result_data) {
@@ -240,10 +225,7 @@ export class AggregateDexRouter implements DexRouter {
   }
 
   /**
-   * Finalize quote with depositAddress (deprecated)
-   * 
-   * @deprecated No longer needed. executeSwap automatically fetches final quote using receiveUser (depositAddress).
-   * Kept for interface compatibility only.
+   * @deprecated No longer needed. Kept for interface compatibility only.
    */
   async finalizeQuote(
     params: QuoteParams,
@@ -259,10 +241,100 @@ export class AggregateDexRouter implements DexRouter {
     });
   }
 
-  /**
-   * Execute swap with V2 Router
-   * Automatically fetches final quote using receiveUser (depositAddress) to ensure correct routerMsg and signature.
-   */
+  private async reFetchQuoteWithBalance(
+    quoteParams: QuoteParams,
+    actualBalance: string,
+    context: string
+  ): Promise<QuoteResult> {
+    const balanceBig = new Big(actualBalance);
+    const adjustedParams: QuoteParams = {
+      ...quoteParams,
+      amountIn: balanceBig.toFixed(0),
+    };
+
+    logger.warn(`AggregateDexRouter - ${context}: re-fetching quote with actual balance:`, {
+      requestedAmount: quoteParams.amountIn,
+      actualBalance: actualBalance,
+    });
+
+    const adjustedQuote = await this.quote(adjustedParams);
+    if (adjustedQuote.success && adjustedQuote.routerMsg && adjustedQuote.signature) {
+      return adjustedQuote;
+    } else {
+      throw new Error(`Failed to re-fetch quote with actual balance: ${adjustedQuote.error || "Unknown error"}`);
+    }
+  }
+
+  private async ensureQuoteAmountWithinBalance(
+    quoteParams: QuoteParams,
+    actualBalance: string,
+    context: string
+  ): Promise<QuoteResult> {
+    const requestedAmountBig = new Big(quoteParams.amountIn);
+    const balanceBig = new Big(actualBalance);
+
+    // Check if tokenIn is native NEAR
+    // We need to reserve gas for native NEAR transactions because they include multiple storage_deposits
+    // and the transfer itself requires gas.
+    const isNativeNear =
+      (quoteParams.tokenIn.symbol === "NEAR" ||
+        quoteParams.tokenIn.address === "near" ||
+        (!quoteParams.tokenIn.address && quoteParams.tokenIn.symbol === "NEAR")) &&
+      quoteParams.tokenIn.address !== this.wrapNearContractId;
+
+    let effectiveBalanceBig = balanceBig;
+    let effectiveBalanceStr = actualBalance;
+
+    // Reserve 0.05 NEAR for gas and storage costs for native NEAR
+    if (isNativeNear) {
+      const reserveAmount = new Big("50000000000000000000000"); 
+      if (balanceBig.gt(reserveAmount)) {
+        effectiveBalanceBig = balanceBig.minus(reserveAmount);
+        effectiveBalanceStr = effectiveBalanceBig.toFixed(0);
+      } else {
+        effectiveBalanceBig = new Big(0);
+        effectiveBalanceStr = "0";
+      }
+    }
+
+    if (requestedAmountBig.gt(effectiveBalanceBig) && balanceBig.gt(0)) {
+      return await this.reFetchQuoteWithBalance(quoteParams, effectiveBalanceStr, `${context} (requested amount exceeds available balance${isNativeNear ? " minus gas reserve" : ""})`);
+    }
+
+    if (balanceBig.gt(0) && requestedAmountBig.lt(balanceBig)) {
+      const diff = balanceBig.minus(requestedAmountBig);
+      const diffPercent = diff.div(balanceBig).times(100);
+      const isMaxSwap = diffPercent.lt(0.1) || diff.lt(1000);
+      
+      if (isMaxSwap) {
+        return await this.reFetchQuoteWithBalance(quoteParams, effectiveBalanceStr, `${context} (MAX swap detected, using ${isNativeNear ? "balance minus gas reserve" : "actual balance"})`);
+      }
+    }
+    const quote = await this.quote(quoteParams);
+    if (!quote.success) {
+      throw new Error(`Failed to fetch quote: ${quote.error || "Unknown error"}`);
+    }
+
+    if (quote.amountIn !== quoteParams.amountIn) {
+      const apiAmountBig = new Big(quote.amountIn);
+      if (apiAmountBig.gt(effectiveBalanceBig) && balanceBig.gt(0)) {
+        return await this.reFetchQuoteWithBalance(quoteParams, effectiveBalanceStr, `${context} (API returned amount_in exceeds available balance)`);
+      }
+      
+      if (apiAmountBig.lt(balanceBig) && balanceBig.gt(0)) {
+        const diff = balanceBig.minus(apiAmountBig);
+        const diffPercent = diff.div(balanceBig).times(100);
+        const isMaxSwap = diffPercent.lt(0.1) || diff.lt(1000);
+        
+        if (isMaxSwap) {
+          return await this.reFetchQuoteWithBalance(quoteParams, effectiveBalanceStr, `${context} (API returned amount_in close to balance, MAX swap detected)`);
+        }
+      }
+    }
+
+    return quote;
+  }
+
   async executeSwap(params: ExecuteParams): Promise<ExecuteResult> {
     try {
       if (!requiresRecipientInExecute(params)) {
@@ -295,18 +367,19 @@ export class AggregateDexRouter implements DexRouter {
         };
       }
 
-      logger.debug("AggregateDexRouter - executeSwap params:", {
-        sender,
-        receiveUser,
-        tokenIn: quote.tokenIn.address,
-        tokenOut: quote.tokenOut.address,
-        amountIn: quote.amountIn,
-        tokens: quote.tokens,
-        dexs: quote.dexs,
-      });
-
-      // Always fetch fresh quote with receiveUser (depositAddress) to ensure correct routerMsg and signature
       const slippage = quote.slippage || 0.005;
+      
+      let tokenBalanceAtExecution = "0";
+      try {
+        const balanceResult = await this.nearChainAdapter.view({
+          contractId: quote.tokenIn.address,
+          methodName: "ft_balance_of",
+          args: { account_id: sender },
+        });
+        tokenBalanceAtExecution = balanceResult || "0";
+      } catch (e) {
+        // Ignore balance fetch errors
+      }
       
       const finalQuoteParams: QuoteParams = {
         tokenIn: quote.tokenIn,
@@ -319,14 +392,11 @@ export class AggregateDexRouter implements DexRouter {
 
       let finalQuote: QuoteResult;
       try {
-        finalQuote = await this.quote(finalQuoteParams);
-        
-        if (!finalQuote.success) {
-          return {
-            success: false,
-            error: `Failed to fetch quote with receiveUser="${receiveUser}": ${finalQuote.error}`,
-          };
-        }
+        finalQuote = await this.ensureQuoteAmountWithinBalance(
+          finalQuoteParams,
+          tokenBalanceAtExecution,
+          "Re-fetching quote with receiveUser"
+        );
       } catch (error: any) {
         logger.error("AggregateDexRouter - Failed to fetch quote with receiveUser:", error);
         return {
@@ -344,13 +414,6 @@ export class AggregateDexRouter implements DexRouter {
           error: `Quote fetched with receiveUser="${receiveUser}" is missing routerMsg or signature.`,
         };
       }
-
-      logger.debug("AggregateDexRouter - Successfully fetched final quote:", {
-        receiveUser,
-        quoteRecipient: finalQuote.recipient,
-        routerMsgLength: routerMsg.length,
-        signatureLength: signature.length,
-      });
 
       const tokens = finalQuote.tokens || [];
       const dexs = finalQuote.dexs || [];
@@ -378,11 +441,12 @@ export class AggregateDexRouter implements DexRouter {
         }
       };
 
-      // 1. Convert NEAR to wNEAR if tokenIn is NEAR
+      // 1. Convert NEAR to wNEAR if tokenIn is native NEAR
       const isNativeNear =
-        finalQuote.tokenIn.symbol === "NEAR" ||
-        finalQuote.tokenIn.address === "near" ||
-        (!finalQuote.tokenIn.address && finalQuote.tokenIn.symbol === "NEAR");
+        (finalQuote.tokenIn.symbol === "NEAR" ||
+          finalQuote.tokenIn.address === "near" ||
+          (!finalQuote.tokenIn.address && finalQuote.tokenIn.symbol === "NEAR")) &&
+        finalQuote.tokenIn.address !== this.wrapNearContractId;
 
       if (isNativeNear) {
         const wrapNearStorageBalance = await getStorageBalance(
@@ -436,14 +500,7 @@ export class AggregateDexRouter implements DexRouter {
       });
 
       // 3. Check if receiveUser is registered in tokenOut
-      // Required: receiveUser must be registered in tokenOut contract for the aggregate contract to send tokens
       if (receiveUser && receiveUser !== sender) {
-        logger.debug("AggregateDexRouter - Checking receiveUser registration in tokenOut:", {
-          receiveUser,
-          tokenOut: finalQuote.tokenOut.address,
-          tokenOutSymbol: finalQuote.tokenOut.symbol,
-        });
-
         const receiveUserStorageBalance = await getStorageBalance(
           finalQuote.tokenOut.address,
           receiveUser
@@ -457,13 +514,6 @@ export class AggregateDexRouter implements DexRouter {
         });
 
         if (!receiveUserStorageBalance) {
-          logger.debug("AggregateDexRouter - receiveUser not registered in tokenOut, adding registration transaction:", {
-            receiveUser,
-            tokenOut: finalQuote.tokenOut.address,
-            tokenOutSymbol: finalQuote.tokenOut.symbol,
-            storageCost: this.NEW_ACCOUNT_STORAGE_COST,
-          });
-
           transactions.push({
             contractId: finalQuote.tokenOut.address,
             methodName: "storage_deposit",
@@ -513,7 +563,6 @@ export class AggregateDexRouter implements DexRouter {
         );
 
         if (unregisteredTokens.length > 0) {
-          // Each token requires 0.005 NEAR storage fee
           const depositPerToken = new Big("0.005").mul(
             new Big("1000000000000000000000000")
           );
@@ -533,9 +582,45 @@ export class AggregateDexRouter implements DexRouter {
       }
 
       // 6. Main swap transaction
-      const msgString = JSON.stringify({
-        msg: routerMsg,
-        signature: signature,
+      // Re-fetch balance right before execution (may have changed due to registration fees)
+      try {
+        const balanceResult = await this.nearChainAdapter.view({
+          contractId: finalQuote.tokenIn.address,
+          methodName: "ft_balance_of",
+          args: { account_id: sender },
+        });
+        tokenBalanceAtExecution = balanceResult || "0";
+      } catch (e) {
+        // Ignore balance fetch errors
+      }
+      const finalBalanceQuoteParams: QuoteParams = {
+        tokenIn: finalQuote.tokenIn,
+        tokenOut: finalQuote.tokenOut,
+        amountIn: finalQuote.amountIn,
+        slippage: slippage,
+        sender: sender,
+        recipient: receiveUser,
+      };
+
+      let finalQuoteForExecution: QuoteResult;
+      try {
+        finalQuoteForExecution = await this.ensureQuoteAmountWithinBalance(
+          finalBalanceQuoteParams,
+          tokenBalanceAtExecution,
+          "Final balance check before execution"
+        );
+      } catch (error: any) {
+        logger.error("AggregateDexRouter - Failed final balance check:", error);
+        return {
+          success: false,
+          error: `Failed final balance check: ${error?.message || "Unknown error"}`,
+        };
+      }
+
+      const finalAmountToTransfer = finalQuoteForExecution.amountIn;
+      const finalMsgString = JSON.stringify({
+        msg: finalQuoteForExecution.routerMsg,
+        signature: finalQuoteForExecution.signature,
       });
 
       transactions.push({
@@ -543,42 +628,11 @@ export class AggregateDexRouter implements DexRouter {
         methodName: "ft_transfer_call",
         args: {
           receiver_id: this.aggregateDexContractId,
-          amount: finalQuote.amountIn,
-          msg: msgString,
+          amount: finalAmountToTransfer,
+          msg: finalMsgString,
         },
         gas: "300000000000000",
         expandDeposit: this.ONE_YOCTO_NEAR,
-      });
-
-      const totalDeposit = transactions.reduce((sum, tx) => {
-        if (tx.expandDeposit) {
-          return sum.plus(tx.expandDeposit);
-        }
-        return sum;
-      }, new Big(0));
-
-      logger.debug("AggregateDexRouter - Executing swap (following mature codebase logic):", {
-        contractId: finalQuote.tokenIn.address,
-        receiver_id: this.aggregateDexContractId,
-        amount: finalQuote.amountIn,
-        transactionsCount: transactions.length,
-        sender,
-        receiveUser,
-        tokens: tokens.length,
-        dexs: dexs.length,
-        totalDepositYocto: totalDeposit.toFixed(0),
-        totalDepositNEAR: totalDeposit.div(new Big("1000000000000000000000000")).toFixed(6),
-        transactions: transactions.map((tx, idx) => ({
-          index: idx,
-          contractId: tx.contractId,
-          methodName: tx.methodName,
-          expandDeposit: tx.expandDeposit,
-          expandDepositNEAR: tx.expandDeposit
-            ? new Big(tx.expandDeposit)
-                .div(new Big("1000000000000000000000000"))
-                .toFixed(6)
-            : "0",
-        })),
       });
 
       const result = await this.nearChainAdapter.call({
@@ -608,9 +662,6 @@ export class AggregateDexRouter implements DexRouter {
   }
 
 
-  /**
-   * Query user token registration status in AGGREGATE_DEX contract
-   */
   private async queryUserTokensRegistered({
     user,
     tokens,
