@@ -148,6 +148,15 @@ export function normalizeDestinationAsset(
 ): string {
   if (!assetId) return assetId;
 
+  // Extract nep141:xxx from 1cs_v1:near:nep141:xxx format
+  if (assetId.startsWith("1cs_v1:")) {
+    const parts = assetId.split(":");
+    const nep141Index = parts.findIndex((p) => p === "nep141");
+    if (nep141Index >= 0 && nep141Index < parts.length - 1) {
+      return `nep141:${parts.slice(nep141Index + 1).join(":")}`;
+    }
+  }
+
   if (assetId.startsWith("nep141:") || assetId.startsWith("nep245:")) {
     return assetId;
   }

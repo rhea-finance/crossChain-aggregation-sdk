@@ -206,8 +206,51 @@ export class NearSmartRouter implements DexRouter {
       }
 
       const finalRecipient = depositAddress || recipient;
+      const sender = params.sender || finalRecipient;
 
       const transactions: any[] = [];
+
+      const isNativeNear =
+        quote.tokenIn.address === "near" ||
+        (quote.tokenIn.address === this.wrapNearContractId &&
+          quote.tokenIn.symbol === "NEAR") ||
+        (!quote.tokenIn.address && quote.tokenIn.symbol === "NEAR");
+
+      if (isNativeNear) {
+        let wrapNearStorageBalance = null;
+        try {
+          wrapNearStorageBalance = await this.nearChainAdapter.view({
+            contractId: this.wrapNearContractId,
+            methodName: "storage_balance_of",
+            args: {
+              account_id: sender,
+            },
+          });
+        } catch (err) {
+          wrapNearStorageBalance = null;
+        }
+
+        if (!wrapNearStorageBalance) {
+          transactions.push({
+            contractId: this.wrapNearContractId,
+            methodName: "storage_deposit",
+            args: {
+              account_id: sender,
+              registration_only: true,
+            },
+            gas: "50000000000000",
+            expandDeposit: "1250000000000000000000", // 0.00125 NEAR
+          });
+        }
+
+        transactions.push({
+          contractId: this.wrapNearContractId,
+          methodName: "near_deposit",
+          args: {},
+          gas: "50000000000000",
+          expandDeposit: quote.amountIn,
+        });
+      }
 
       if (finalRecipient && quote.tokenOut?.address) {
         let isRegistered = false;
@@ -248,8 +291,12 @@ export class NearSmartRouter implements DexRouter {
         swapMsg.swap_out_recipient = finalRecipient;
       }
 
+      const tokenInAddress = isNativeNear
+        ? this.wrapNearContractId
+        : quote.tokenIn.address;
+
       transactions.push({
-        contractId: quote.tokenIn.address,
+        contractId: tokenInAddress,
         methodName: "ft_transfer_call",
         args: {
           receiver_id: this.refExchangeId,

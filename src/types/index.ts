@@ -108,6 +108,8 @@ export interface BaseExecuteParams {
   recipient: string;
   depositAddress?: string;
   deadline?: number;
+  /** Optional sender address (for native NEAR wrap operations) */
+  sender?: string;
 }
 
 /**

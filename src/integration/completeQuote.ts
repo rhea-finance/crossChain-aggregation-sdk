@@ -27,6 +27,7 @@ export interface CompleteQuoteParams {
   recipient: string;
   refundTo?: string;
   customRecipientMsg?: string;
+  appFees?: Array<{ recipient: string; fee: number }>;
 }
 
 export interface CompleteQuoteResult {
@@ -84,6 +85,7 @@ export async function completeQuote(
     recipient,
     refundTo,
     customRecipientMsg,
+    appFees,
   } = params;
 
   const {
@@ -189,7 +191,9 @@ export async function completeQuote(
           : `nep141:${bluechipToken.address}`;
 
         let normalizedTargetAsset = targetToken.address;
-        if (
+        if (normalizedTargetAsset?.startsWith("1cs_v1:")) {
+          // Keep 1cs_v1: format as is
+        } else if (
           normalizedTargetAsset &&
           !normalizedTargetAsset.startsWith("nep141:") &&
           !normalizedTargetAsset.startsWith("nep245:") &&
@@ -200,9 +204,11 @@ export async function completeQuote(
             wrapNearContractId
           )}`;
         }
-        normalizedTargetAsset =
-          normalizeDestinationAsset(normalizedTargetAsset, wrapNearContractId) ||
-          normalizedTargetAsset;
+        if (!normalizedTargetAsset?.startsWith("1cs_v1:")) {
+          normalizedTargetAsset =
+            normalizeDestinationAsset(normalizedTargetAsset, wrapNearContractId) ||
+            normalizedTargetAsset;
+        }
 
         const slippageBps = convertSlippageToBasisPoints(slippage);
         const intentsQuote = await intentsQuotationAdapter.quote({
@@ -214,6 +220,7 @@ export async function completeQuote(
           slippageTolerance: slippageBps,
           swapType: "FLEX_INPUT",
           ...(customRecipientMsg ? { customRecipientMsg } : {}),
+          ...(appFees ? { appFees } : {}),
         });
 
         if (intentsQuote.quoteStatus !== "success") {
@@ -262,9 +269,10 @@ export async function completeQuote(
           }
         }
 
-        // Normalize target asset
         let normalizedTargetAsset = targetToken.address;
-        if (
+        if (normalizedTargetAsset?.startsWith("1cs_v1:")) {
+          // Keep 1cs_v1: format as is
+        } else if (
           normalizedTargetAsset &&
           !normalizedTargetAsset.startsWith("nep141:") &&
           !normalizedTargetAsset.startsWith("nep245:") &&
@@ -275,9 +283,11 @@ export async function completeQuote(
             wrapNearContractId
           )}`;
         }
-        normalizedTargetAsset =
-          normalizeDestinationAsset(normalizedTargetAsset, wrapNearContractId) ||
-          normalizedTargetAsset;
+        if (!normalizedTargetAsset?.startsWith("1cs_v1:")) {
+          normalizedTargetAsset =
+            normalizeDestinationAsset(normalizedTargetAsset, wrapNearContractId) ||
+            normalizedTargetAsset;
+        }
 
         const slippageBps = convertSlippageToBasisPoints(slippage);
         const intentsQuote = await intentsQuotationAdapter.quote({
