@@ -1,5 +1,4 @@
 import { TokenInfo, BluechipTokensConfig } from "../types";
-import { logger } from "./logger";
 
 let bluechipTokensConfig: BluechipTokensConfig | null = null;
 
