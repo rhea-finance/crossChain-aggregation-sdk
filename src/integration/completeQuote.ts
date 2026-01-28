@@ -26,6 +26,7 @@ export interface CompleteQuoteParams {
   slippage: number;
   recipient: string;
   refundTo?: string;
+  customRecipientMsg?: string;
 }
 
 export interface CompleteQuoteResult {
@@ -82,6 +83,7 @@ export async function completeQuote(
     slippage,
     recipient,
     refundTo,
+    customRecipientMsg,
   } = params;
 
   const {
@@ -211,6 +213,7 @@ export async function completeQuote(
           recipient,
           slippageTolerance: slippageBps,
           swapType: "FLEX_INPUT",
+          ...(customRecipientMsg ? { customRecipientMsg } : {}),
         });
 
         if (intentsQuote.quoteStatus !== "success") {
@@ -285,6 +288,7 @@ export async function completeQuote(
           recipient,
           slippageTolerance: slippageBps,
           swapType: "EXACT_INPUT",
+          ...(customRecipientMsg ? { customRecipientMsg } : {}),
         });
 
         if (intentsQuote.quoteStatus !== "success") {
