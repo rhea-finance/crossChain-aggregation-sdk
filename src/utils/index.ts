@@ -8,12 +8,9 @@ export function setBluechipTokensConfig(config: BluechipTokensConfig): void {
   bluechipTokensConfig = config;
 }
 
-/** Get the bluechip token config; returns an empty object (and warns) if unset. */
+/** Get the bluechip token config; returns an empty object if unset. */
 export function getBluechipTokensConfig(): BluechipTokensConfig {
   if (!bluechipTokensConfig) {
-    logger.warn(
-      "getBluechipTokensConfig - Bluechip tokens config not set, returning empty config"
-    );
     return {};
   }
   return bluechipTokensConfig;
@@ -29,7 +26,6 @@ export function normalizeTokenId(
   wrapNearContractId: string = "wrap.near"
 ): string {
   if (!tokenId) {
-    logger.error("normalizeTokenId - Empty tokenId:", tokenId);
     return "";
   }
 
@@ -38,13 +34,6 @@ export function normalizeTokenId(
   // Note: `nep141:` has already been stripped above.
   if (normalized === "near") {
     normalized = wrapNearContractId;
-  }
-
-  if (!normalized) {
-    logger.error("normalizeTokenId - Result is empty:", {
-      tokenId,
-      normalized,
-    });
   }
 
   return normalized;
@@ -120,9 +109,6 @@ export function findBestBluechipToken(
   }
 
   if (preferredTokens.length === 0) {
-    logger.warn(
-      "findBestBluechipToken - No preferred tokens found, using wrap.near"
-    );
     return {
       address: wrapNearContractId,
       symbol: "wNEAR",
@@ -131,7 +117,6 @@ export function findBestBluechipToken(
     };
   }
 
-  logger.debug("findBestBluechipToken - Selected token:", preferredTokens[0]);
   return preferredTokens[0];
 }
 
@@ -220,10 +205,6 @@ export function formatGasToTgas(gasInYoctoNEAR: string | number): string {
     const tgasBigInt = gasBigInt / BigInt("1000000000000");
     return tgasBigInt.toString();
   } catch (error) {
-    logger.error("formatGasToTgas - Error formatting gas:", {
-      gasInYoctoNEAR,
-      error,
-    });
     return "0";
   }
 }

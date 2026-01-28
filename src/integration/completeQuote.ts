@@ -15,7 +15,6 @@ import {
   convertSlippageToBasisPoints,
   normalizeDestinationAsset,
 } from "../utils";
-import { logger } from "../utils/logger";
 import { IntentsQuotationAdapter } from "../adapters/types";
 
 export interface CompleteQuoteParams {
@@ -126,18 +125,8 @@ export async function completeQuote(
   );
 
   if (!bluechipToken?.address) {
-    logger.error("DEX Aggregator - Failed to find bluechip token:", {
-      bluechipToken,
-      bluechipTokens,
-    });
     throw new Error("Failed to find bluechip token address");
   }
-
-  // logger.debug("DEX Aggregator - Using bluechip token:", {
-  //   address: bluechipToken.address,
-  //   symbol: bluechipToken.symbol,
-  //   decimals: bluechipToken.decimals,
-  // });
 
   // Prepare all quote paths for parallel execution
   // If token supports Intents, we have 3 paths: V1+Intents, V2+Intents, Direct Intents
@@ -183,9 +172,7 @@ export async function completeQuote(
         // Step 1: Get pre-swap quote
         const preSwapQuote = await router.quote(quoteParams);
         if (!preSwapQuote.success) {
-          throw new Error(
-            `${routeType} pre-swap failed: ${preSwapQuote.error}`
-          );
+          throw new Error("Failed to get quote");
         }
 
         // Step 2: Get Intents quote with pre-swap output
@@ -227,9 +214,7 @@ export async function completeQuote(
         });
 
         if (intentsQuote.quoteStatus !== "success") {
-          throw new Error(
-            `${routeType} Intents quote failed: ${intentsQuote.message}`
-          );
+          throw new Error("Failed to get quote");
         }
 
         return {
@@ -303,9 +288,7 @@ export async function completeQuote(
         });
 
         if (intentsQuote.quoteStatus !== "success") {
-          throw new Error(
-            `Direct Intents quote failed: ${intentsQuote.message}`
-          );
+          throw new Error("Failed to get quote");
         }
 
         return {
@@ -338,30 +321,11 @@ export async function completeQuote(
         type: pathType,
         ...result.value,
       });
-    } else {
-      logger.warn(`Path ${pathType} failed:`, result.reason);
     }
   });
 
-  // Log all path amounts for debugging (disabled)
-   logger.debug("Cross-chain Quote Comparison:", {
-    paths: validPaths.map((p) => ({
-       type: p.type.toUpperCase(),
-       finalAmountOut: p.finalAmountOut,
-     })),
-  });
-
   if (validPaths.length === 0) {
-    const errors = pathResults
-      .map((r, index) => {
-        const pathType = quotePaths[index].type;
-        if (r.status === "rejected") {
-          return `${pathType}: ${r.reason}`;
-        }
-        return null;
-      })
-      .filter(Boolean);
-    throw new Error(`All quote paths failed: ${errors.join("; ")}`);
+    throw new Error("Failed to get quote");
   }
 
   // Select path with maximum finalAmountOut
@@ -371,9 +335,6 @@ export async function completeQuote(
     return currentAmount.gt(bestAmount) ? current : best;
   });
 
-   logger.debug(
-     `✓ Selected best path: [${bestPath.type.toUpperCase()}] with finalAmountOut: ${bestPath.finalAmountOut}`
-   );
 
   const depositAddress =
     bestPath.intentsQuote.quoteSuccessResult?.quote?.depositAddress || "";

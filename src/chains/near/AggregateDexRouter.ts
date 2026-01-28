@@ -15,7 +15,6 @@ import {
   normalizeTokenId,
   convertSlippageToBasisPoints,
 } from "../../utils";
-import { logger } from "../../utils/logger";
 import {
   SwapMultiDexPathAdapter,
   NearChainAdapter,
@@ -50,9 +49,7 @@ export class AggregateDexRouter implements DexRouter {
     this.wrapNearContractId = this.configAdapter.getWrapNearContractId();
 
     if (!this.aggregateDexContractId) {
-      logger.error(
-        "AggregateDexRouter - AGGREGATE_DEX_CONTRACT_ID not configured"
-      );
+      // AGGREGATE_DEX_CONTRACT_ID not configured
     }
   }
 
@@ -86,17 +83,13 @@ export class AggregateDexRouter implements DexRouter {
           amountOut: "0",
           minAmountOut: "0",
           routes: [],
-          error: "V2 Router requires sender and recipient parameters",
+          error: "Missing sender or recipient",
         };
       }
 
       const { tokenIn, tokenOut, amountIn, slippage, sender, recipient } = params;
 
       if (!sender || !recipient) {
-        logger.error("AggregateDexRouter quote - Missing sender or recipient:", {
-          sender,
-          recipient,
-        });
         return {
           success: false,
           tokenIn: params.tokenIn,
@@ -105,7 +98,7 @@ export class AggregateDexRouter implements DexRouter {
           amountOut: "0",
           minAmountOut: "0",
           routes: [],
-          error: `V2 Router requires non-empty sender and recipient. Got sender="${sender}", recipient="${recipient}"`,
+          error: "Missing sender or recipient",
         };
       }
 
@@ -132,16 +125,6 @@ export class AggregateDexRouter implements DexRouter {
       );
 
       if (!normalizedTokenIn || !normalizedTokenOut) {
-        logger.error("AggregateDexRouter quote - Invalid token addresses:", {
-          tokenIn: {
-            original: tokenIn.address,
-            normalized: normalizedTokenIn,
-          },
-          tokenOut: {
-            original: tokenOut.address,
-            normalized: normalizedTokenOut,
-          },
-        });
         return {
           success: false,
           tokenIn: params.tokenIn,
@@ -150,9 +133,7 @@ export class AggregateDexRouter implements DexRouter {
           amountOut: "0",
           minAmountOut: "0",
           routes: [],
-          error: `Invalid token address: tokenIn=${
-            normalizedTokenIn || "empty"
-          }, tokenOut=${normalizedTokenOut || "empty"}`,
+          error: "Invalid token address",
         };
       }
 
@@ -178,9 +159,7 @@ export class AggregateDexRouter implements DexRouter {
           amountOut: "0",
           minAmountOut: "0",
           routes: [],
-          error:
-            response.result_message ||
-            "V2 Router API call failed",
+          error: "Failed to get quote",
         };
       }
 
@@ -210,7 +189,6 @@ export class AggregateDexRouter implements DexRouter {
         slippage: slippage,
       };
     } catch (error: any) {
-      logger.error("AggregateDexRouter quote - Error:", error);
       return {
         success: false,
         tokenIn: params.tokenIn,
@@ -219,7 +197,7 @@ export class AggregateDexRouter implements DexRouter {
         amountOut: "0",
         minAmountOut: "0",
         routes: [],
-        error: error?.message || "Quote failed",
+        error: "Failed to get quote",
       };
     }
   }
@@ -244,7 +222,7 @@ export class AggregateDexRouter implements DexRouter {
   private async reFetchQuoteWithBalance(
     quoteParams: QuoteParams,
     actualBalance: string,
-    context: string
+    _context: string
   ): Promise<QuoteResult> {
     const balanceBig = new Big(actualBalance);
     const adjustedParams: QuoteParams = {
@@ -252,16 +230,12 @@ export class AggregateDexRouter implements DexRouter {
       amountIn: balanceBig.toFixed(0),
     };
 
-    logger.warn(`AggregateDexRouter - ${context}: re-fetching quote with actual balance:`, {
-      requestedAmount: quoteParams.amountIn,
-      actualBalance: actualBalance,
-    });
 
     const adjustedQuote = await this.quote(adjustedParams);
     if (adjustedQuote.success && adjustedQuote.routerMsg && adjustedQuote.signature) {
       return adjustedQuote;
     } else {
-      throw new Error(`Failed to re-fetch quote with actual balance: ${adjustedQuote.error || "Unknown error"}`);
+      throw new Error("Failed to get quote");
     }
   }
 
@@ -298,7 +272,7 @@ export class AggregateDexRouter implements DexRouter {
     }
 
     if (requestedAmountBig.gt(effectiveBalanceBig) && balanceBig.gt(0)) {
-      return await this.reFetchQuoteWithBalance(quoteParams, effectiveBalanceStr, `${context} (requested amount exceeds available balance${isNativeNear ? " minus gas reserve" : ""})`);
+      return await this.reFetchQuoteWithBalance(quoteParams, effectiveBalanceStr, context);
     }
 
     if (balanceBig.gt(0) && requestedAmountBig.lt(balanceBig)) {
@@ -307,18 +281,18 @@ export class AggregateDexRouter implements DexRouter {
       const isMaxSwap = diffPercent.lt(0.1) || diff.lt(1000);
       
       if (isMaxSwap) {
-        return await this.reFetchQuoteWithBalance(quoteParams, effectiveBalanceStr, `${context} (MAX swap detected, using ${isNativeNear ? "balance minus gas reserve" : "actual balance"})`);
+        return await this.reFetchQuoteWithBalance(quoteParams, effectiveBalanceStr, context);
       }
     }
     const quote = await this.quote(quoteParams);
     if (!quote.success) {
-      throw new Error(`Failed to fetch quote: ${quote.error || "Unknown error"}`);
+      throw new Error("Failed to get quote");
     }
 
     if (quote.amountIn !== quoteParams.amountIn) {
       const apiAmountBig = new Big(quote.amountIn);
       if (apiAmountBig.gt(effectiveBalanceBig) && balanceBig.gt(0)) {
-        return await this.reFetchQuoteWithBalance(quoteParams, effectiveBalanceStr, `${context} (API returned amount_in exceeds available balance)`);
+        return await this.reFetchQuoteWithBalance(quoteParams, effectiveBalanceStr, context);
       }
       
       if (apiAmountBig.lt(balanceBig) && balanceBig.gt(0)) {
@@ -327,7 +301,7 @@ export class AggregateDexRouter implements DexRouter {
         const isMaxSwap = diffPercent.lt(0.1) || diff.lt(1000);
         
         if (isMaxSwap) {
-          return await this.reFetchQuoteWithBalance(quoteParams, effectiveBalanceStr, `${context} (API returned amount_in close to balance, MAX swap detected)`);
+          return await this.reFetchQuoteWithBalance(quoteParams, effectiveBalanceStr, context);
         }
       }
     }
@@ -340,7 +314,7 @@ export class AggregateDexRouter implements DexRouter {
       if (!requiresRecipientInExecute(params)) {
         return {
           success: false,
-          error: "V2 Router requires sender and receiveUser parameters",
+          error: "Missing sender or receiveUser",
         };
       }
 
@@ -356,14 +330,14 @@ export class AggregateDexRouter implements DexRouter {
       if (!receiveUser || receiveUser.trim() === "") {
         return {
           success: false,
-          error: "receiveUser (depositAddress) is required",
+          error: "Missing receiveUser",
         };
       }
 
       if (receiveUser.startsWith("0x") && receiveUser.length === 42) {
         return {
           success: false,
-          error: `receiveUser appears to be an EVM address (${receiveUser}). For NEAR chain swaps, depositAddress must be a NEAR account (64 hex chars or .near format)`,
+          error: "Invalid receiveUser address",
         };
       }
 
@@ -398,10 +372,9 @@ export class AggregateDexRouter implements DexRouter {
           "Re-fetching quote with receiveUser"
         );
       } catch (error: any) {
-        logger.error("AggregateDexRouter - Failed to fetch quote with receiveUser:", error);
         return {
           success: false,
-          error: `Failed to fetch quote with receiveUser="${receiveUser}": ${error?.message || "Unknown error"}`,
+          error: "Failed to get quote",
         };
       }
 
@@ -411,7 +384,7 @@ export class AggregateDexRouter implements DexRouter {
       if (!routerMsg || !signature) {
         return {
           success: false,
-          error: `Quote fetched with receiveUser="${receiveUser}" is missing routerMsg or signature.`,
+          error: "Failed to get quote",
         };
       }
 
@@ -504,14 +477,7 @@ export class AggregateDexRouter implements DexRouter {
         const receiveUserStorageBalance = await getStorageBalance(
           finalQuote.tokenOut.address,
           receiveUser
-        ).catch((error) => {
-          logger.warn("AggregateDexRouter - Failed to check receiveUser storage balance:", {
-            receiveUser,
-            tokenOut: finalQuote.tokenOut.address,
-            error: error?.message,
-          });
-          return null;
-        });
+        ).catch(() => null);
 
         if (!receiveUserStorageBalance) {
           transactions.push({
@@ -610,10 +576,9 @@ export class AggregateDexRouter implements DexRouter {
           "Final balance check before execution"
         );
       } catch (error: any) {
-        logger.error("AggregateDexRouter - Failed final balance check:", error);
         return {
           success: false,
-          error: `Failed final balance check: ${error?.message || "Unknown error"}`,
+          error: "Failed to get quote",
         };
       }
 
@@ -649,14 +614,13 @@ export class AggregateDexRouter implements DexRouter {
       } else {
         return {
           success: false,
-          error: result.message || "Execute swap failed",
+          error: "Execute swap failed",
         };
       }
     } catch (error: any) {
-      logger.error("AggregateDexRouter executeSwap - Error:", error);
       return {
         success: false,
-        error: error?.message || "Execute swap failed",
+        error: "Execute swap failed",
       };
     }
   }
@@ -679,10 +643,6 @@ export class AggregateDexRouter implements DexRouter {
         },
       });
     } catch (error) {
-      logger.error(
-        "AggregateDexRouter - Failed to query user tokens registered:",
-        error
-      );
       return tokens.map(() => false);
     }
   }

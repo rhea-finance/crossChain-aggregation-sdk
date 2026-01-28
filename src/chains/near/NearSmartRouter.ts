@@ -14,7 +14,6 @@ import {
   normalizeTokenId,
   convertSlippageToBasisPoints,
 } from "../../utils";
-import { logger } from "../../utils/logger";
 import {
   FindPathAdapter,
   NearChainAdapter,
@@ -81,16 +80,6 @@ export class NearSmartRouter implements DexRouter {
       );
 
       if (!normalizedTokenIn || !normalizedTokenOut) {
-        logger.error("SmartRouter quote - Invalid token addresses:", {
-          tokenIn: {
-            original: tokenIn.address,
-            normalized: normalizedTokenIn,
-          },
-          tokenOut: {
-            original: tokenOut.address,
-            normalized: normalizedTokenOut,
-          },
-        });
         return {
           success: false,
           tokenIn: params.tokenIn,
@@ -99,22 +88,12 @@ export class NearSmartRouter implements DexRouter {
           amountOut: "0",
           minAmountOut: "0",
           routes: [],
-          error: `Invalid token address: tokenIn=${
-            normalizedTokenIn || "empty"
-          }, tokenOut=${normalizedTokenOut || "empty"}`,
+          error: "Invalid token address",
         };
       }
 
       const slippageBps = convertSlippageToBasisPoints(slippage);
       const slippageDecimalForApi = slippageBps / 10000;
-
-      logger.debug("SmartRouter quote - Calling findPath:", {
-        tokenIn: normalizedTokenIn,
-        tokenOut: normalizedTokenOut,
-        amountIn,
-        slippage: slippageDecimalForApi,
-        slippageBps,
-      });
 
       const response = await this.findPathAdapter.findPath({
         tokenIn: normalizedTokenIn,
@@ -122,12 +101,6 @@ export class NearSmartRouter implements DexRouter {
         amountIn: String(amountIn),
         slippage: slippageDecimalForApi,
         supportLedger: false,
-      });
-
-      logger.debug("SmartRouter quote - findPath response:", {
-        result_code: response?.result_code,
-        result_msg: response?.result_msg || response?.result_message,
-        hasRoutes: !!response?.result_data?.routes?.length,
       });
 
       if (
@@ -252,11 +225,6 @@ export class NearSmartRouter implements DexRouter {
         }
 
         if (!isRegistered) {
-          logger.debug("SmartRouter - Registering recipient account:", {
-            contractId: quote.tokenOut.address,
-            accountId: finalRecipient,
-          });
-
           transactions.push({
             contractId: quote.tokenOut.address,
             methodName: "storage_deposit",
@@ -279,16 +247,6 @@ export class NearSmartRouter implements DexRouter {
       if (finalRecipient) {
         swapMsg.swap_out_recipient = finalRecipient;
       }
-
-      logger.debug("SmartRouter - Executing swap:", {
-        contractId: quote.tokenIn.address,
-        receiver_id: this.refExchangeId,
-        amount: quote.amountIn,
-        swapMsg,
-        swapActionsCount: swapActions.length,
-        recipient: finalRecipient,
-        tokenOut: quote.tokenOut?.address,
-      });
 
       transactions.push({
         contractId: quote.tokenIn.address,
