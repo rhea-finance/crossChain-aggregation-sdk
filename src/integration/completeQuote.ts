@@ -77,7 +77,7 @@ export async function completeQuote(
   const {
     sourceToken,
     targetToken,
-    sourceChain,
+    sourceChain: _sourceChain, // Reserved for future use
     targetChain: _targetChain, // Reserved for future use
     amountIn,
     slippage,

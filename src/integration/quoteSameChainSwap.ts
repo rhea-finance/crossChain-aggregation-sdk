@@ -3,7 +3,6 @@
  * Queries V1 and V2 routers in parallel and selects the best route based on maximum amountOut
  */
 
-import Big from "big.js";
 import { TokenInfo, QuoteParams, QuoteResult, DexRouter } from "../types";
 import { selectBestQuote } from "../utils";
 
