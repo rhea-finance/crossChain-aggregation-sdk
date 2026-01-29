@@ -449,6 +449,68 @@ export class AggregateDexRouter implements DexRouter {
         });
       }
 
+      // 1.5. Handle case where tokenIn is wNEAR but user doesn't have wNEAR balance
+      // If tokenIn is wNEAR, check balance and convert NEAR to wNEAR if needed
+      const isWrappedNear =
+        finalQuote.tokenIn.address === this.wrapNearContractId ||
+        (finalQuote.tokenIn.symbol === "WNEAR" &&
+          finalQuote.tokenIn.address === this.wrapNearContractId);
+
+      if (isWrappedNear && !isNativeNear) {
+        // Check wNEAR balance
+        let wNearBalance = "0";
+        try {
+          const wNearBalanceResult = await this.nearChainAdapter.view({
+            contractId: this.wrapNearContractId,
+            methodName: "ft_balance_of",
+            args: { account_id: sender },
+          });
+          wNearBalance = wNearBalanceResult || "0";
+        } catch (e) {
+          // Ignore balance fetch errors, assume no balance
+        }
+
+        const requiredAmount = new Big(finalQuote.amountIn);
+        const currentBalance = new Big(wNearBalance);
+
+        // If user doesn't have enough wNEAR, convert NEAR to wNEAR
+        if (currentBalance.lt(requiredAmount)) {
+          // Calculate how much NEAR we need to convert
+          const amountToConvert = requiredAmount.minus(currentBalance);
+
+          // Check wrap.near storage balance
+          const wrapNearStorageBalance = await getStorageBalance(
+            this.wrapNearContractId,
+            sender
+          ).catch(() => null);
+
+          if (!wrapNearStorageBalance) {
+            transactions.push({
+              contractId: this.wrapNearContractId,
+              methodName: "storage_deposit",
+              args: {
+                account_id: sender,
+                registration_only: true,
+              },
+              gas: "50000000000000",
+              expandDeposit: this.NEW_ACCOUNT_STORAGE_COST,
+            });
+          }
+
+          // Convert NEAR to wNEAR
+          // Note: Gas fees will be deducted from NEAR balance automatically
+          // If user doesn't have enough NEAR, this will fail at execution time
+          // which is expected behavior
+          transactions.push({
+            contractId: this.wrapNearContractId,
+            methodName: "near_deposit",
+            args: {},
+            gas: "50000000000000",
+            expandDeposit: amountToConvert.toFixed(0),
+          });
+        }
+      }
+
       // 2. Check if user is registered in each token
       const tokensToCheck = dexs.length > 1 ? tokens : [finalQuote.tokenOut.address];
       const tokenStorageBalances = await Promise.all(
