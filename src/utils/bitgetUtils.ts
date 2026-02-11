@@ -237,16 +237,18 @@ export async function getEip1559FeeData(
             ? maxAllowedFeePerGas
             : providerFeeData.maxFeePerGas;
 
-          const maxPriorityFeeCap = feeData.maxFeePerGas
-            .div(10)
-            .gt(ethers.utils.parseUnits(MAX_PRIORITY_FEE_CAP, "gwei"))
-            ? ethers.utils.parseUnits(MAX_PRIORITY_FEE_CAP, "gwei")
-            : feeData.maxFeePerGas.div(10);
+          if (feeData.maxFeePerGas) {
+            const maxPriorityFeeCap = feeData.maxFeePerGas
+              .div(10)
+              .gt(ethers.utils.parseUnits(MAX_PRIORITY_FEE_CAP, "gwei"))
+              ? ethers.utils.parseUnits(MAX_PRIORITY_FEE_CAP, "gwei")
+              : feeData.maxFeePerGas.div(10);
 
-          feeData.maxPriorityFeePerGas =
-            providerFeeData.maxPriorityFeePerGas.gt(maxPriorityFeeCap)
-              ? maxPriorityFeeCap
-              : providerFeeData.maxPriorityFeePerGas;
+            feeData.maxPriorityFeePerGas =
+              providerFeeData.maxPriorityFeePerGas.gt(maxPriorityFeeCap)
+                ? maxPriorityFeeCap
+                : providerFeeData.maxPriorityFeePerGas;
+          }
         }
       }
     }

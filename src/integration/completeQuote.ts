@@ -191,8 +191,6 @@ export async function completeQuote(
       type: routeType,
       router,
       promise: (async () => {
-        const logger = require("../utils/logger").logger;
-        
         const preSwapQuote = await router.quote(quoteParams);
         if (!preSwapQuote.success) {
           throw new Error(`Pre-swap quote failed: ${preSwapQuote.error || "Unknown error"}`);
@@ -370,8 +368,6 @@ export async function completeQuote(
     finalAmountOut: string;
   }> = [];
 
-  const logger = require("../utils/logger").logger;
-  
   pathResults.forEach((result, index) => {
     const pathType = quotePaths[index].type;
     if (result.status === "fulfilled") {
