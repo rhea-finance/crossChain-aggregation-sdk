@@ -452,7 +452,7 @@ export class BitgetRouter implements DexRouter {
         }
       }
 
-      const [estimatedGasLimit, hasReliableEstimate] = await estimateGasLimit(
+      const [estimatedGasLimit, hasReliableEstimate, rpcEstimateError] = await estimateGasLimit(
         gas,
         to,
         transactionData,
@@ -462,7 +462,40 @@ export class BitgetRouter implements DexRouter {
         this.evmChainAdapter
       );
 
-      if (!hasReliableEstimate) {
+      if (rpcEstimateError) {
+        const isUnpredictableGasLimit = 
+          rpcEstimateError.code === "UNPREDICTABLE_GAS_LIMIT" ||
+          (rpcEstimateError.message && rpcEstimateError.message.includes("UNPREDICTABLE_GAS_LIMIT")) ||
+          (rpcEstimateError.reason && rpcEstimateError.reason.includes("execution reverted"));
+        
+        if (isUnpredictableGasLimit) {
+          logger.warn("Blocking transaction due to RPC gas estimation failure", {
+            chainId: this.chainId,
+            tokenIn: quote.tokenIn.symbol,
+            tokenOut: quote.tokenOut.symbol,
+            rpcError: rpcEstimateError,
+          });
+          return createExecuteError(
+            "Insufficient liquidity, transaction may fail. Please refresh quote and try again."
+          );
+        }
+
+        if (!gas || gas === "0") {
+          return createExecuteError(
+            "Unable to estimate gas fee, possibly due to insufficient liquidity. Please refresh quote and try again."
+          );
+        }
+
+        logger.warn("RPC gas estimation failed, using Bitget estimate", {
+          chainId: this.chainId,
+          tokenIn: quote.tokenIn.symbol,
+          tokenOut: quote.tokenOut.symbol,
+          estimatedGasLimit: estimatedGasLimit.toString(),
+          bitgetGas: gas || "not provided",
+          rpcError: rpcEstimateError,
+        });
+      } else if (!hasReliableEstimate) {
+        // No RPC error but also no reliable estimate
         logger.warn("Gas estimation unreliable, using conservative default", {
           chainId: this.chainId,
           tokenIn: quote.tokenIn.symbol,

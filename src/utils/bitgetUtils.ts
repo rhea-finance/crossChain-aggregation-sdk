@@ -111,7 +111,8 @@ export async function getGasPriceEstimate(
   );
 }
 
-// Returns [gasLimit, hasReliableEstimate]
+// Returns [gasLimit, hasReliableEstimate, rpcEstimateError]
+// rpcEstimateError: null if no error, or error object if RPC estimation failed
 export async function estimateGasLimit(
   gas: string | undefined,
   to: string,
@@ -120,10 +121,11 @@ export async function estimateGasLimit(
   sender: string,
   chainId: number,
   evmChainAdapter: EvmChainAdapter
-): Promise<[ethers.BigNumber, boolean]> {
+): Promise<[ethers.BigNumber, boolean, { code?: string; reason?: string; message?: string } | null]> {
   const bufferPercent = getGasBuffer(chainId);
   let estimatedGasLimit: ethers.BigNumber | undefined;
   let hasReliableEstimate = false;
+  let rpcEstimateError: { code?: string; reason?: string; message?: string } | null = null;
 
   if (gas) {
     try {
@@ -156,6 +158,12 @@ export async function estimateGasLimit(
           hasReliableEstimate = true;
         }
       } catch (estimateError: any) {
+        // Capture RPC estimation error details
+        rpcEstimateError = {
+          code: estimateError?.code,
+          reason: estimateError?.reason,
+          message: estimateError?.message || String(estimateError),
+        };
         console.warn("RPC gas estimate failed:", {
           error: estimateError?.message || String(estimateError),
           code: estimateError?.code,
@@ -170,14 +178,14 @@ export async function estimateGasLimit(
   }
 
   if (estimatedGasLimit && estimatedGasLimit.gt(0) && hasReliableEstimate) {
-    return [estimatedGasLimit, true];
+    return [estimatedGasLimit, true, rpcEstimateError];
   }
 
   if (estimatedGasLimit && estimatedGasLimit.gt(0)) {
-    return [estimatedGasLimit, false];
+    return [estimatedGasLimit, false, rpcEstimateError];
   }
 
-  return [ethers.BigNumber.from(CONSERVATIVE_GAS_LIMIT), false];
+  return [ethers.BigNumber.from(CONSERVATIVE_GAS_LIMIT), false, rpcEstimateError];
 }
 
 export async function getEip1559FeeData(
