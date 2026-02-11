@@ -73,6 +73,104 @@ export function isNearIntentsSupportedToken(
   return tokenAddress === configAddress || tokenAddress === configAssetId;
 }
 
+/**
+ * Normalize EVM address to checksum format (lowercase for comparison)
+ */
+export function normalizeEvmAddress(address: string): string {
+  if (!address) return address;
+  // Remove 0x prefix if present, convert to lowercase, then add 0x back
+  const addr = address.startsWith("0x") ? address.slice(2) : address;
+  return "0x" + addr.toLowerCase();
+}
+
+/** True if the token matches an Intents-supported bluechip token for EVM chains (by symbol + address). */
+export function isEvmIntentsSupportedToken(
+  token: TokenInfo,
+  bluechipTokens?: BluechipTokensConfig
+): boolean {
+  if (!token?.symbol || !token?.address) {
+    return false;
+  }
+
+  const config = bluechipTokens || getBluechipTokensConfig();
+
+  const normalizedSymbol = token.symbol.toUpperCase();
+
+  // EVM bluechip tokens: USDT, USDC, ETH, WETH
+  const symbolKey =
+    normalizedSymbol === "ETH" || normalizedSymbol === "WETH"
+      ? "ETH"
+      : normalizedSymbol;
+
+  const tokenConfig = config[symbolKey as keyof typeof config];
+
+  if (!tokenConfig) {
+    return false;
+  }
+
+  const normalizeAddress = (addr: string) => normalizeEvmAddress(addr);
+  const tokenAddress = normalizeAddress(token.address);
+  const configAddress = normalizeAddress(tokenConfig.address || "");
+  const configAssetId = tokenConfig.assetId
+    ? normalizeAddress(tokenConfig.assetId)
+    : "";
+
+  return tokenAddress === configAddress || tokenAddress === configAssetId;
+}
+
+/**
+ * Find best bluechip token for EVM chains (priority: USDT > USDC > ETH/WETH)
+ */
+export function findBestEvmBluechipToken(
+  bluechipTokens: BluechipTokensConfig,
+  nativeTokenAddress?: string // e.g., WETH address
+): TokenInfo {
+  const preferredTokens: TokenInfo[] = [];
+
+  if (bluechipTokens.USDT?.address) {
+    preferredTokens.push({
+      address: bluechipTokens.USDT.address,
+      symbol: "USDT",
+      decimals: bluechipTokens.USDT.decimals || 6,
+      chain: "evm",
+    });
+  }
+
+  if (bluechipTokens.USDC?.address) {
+    preferredTokens.push({
+      address: bluechipTokens.USDC.address,
+      symbol: "USDC",
+      decimals: bluechipTokens.USDC.decimals || 6,
+      chain: "evm",
+    });
+  }
+
+  if (bluechipTokens.ETH?.address) {
+    preferredTokens.push({
+      address: bluechipTokens.ETH.address,
+      symbol: bluechipTokens.ETH.symbol || "WETH",
+      decimals: bluechipTokens.ETH.decimals || 18,
+      chain: "evm",
+    });
+  }
+
+  // Fallback to native wrapped token if provided
+  if (preferredTokens.length === 0 && nativeTokenAddress) {
+    return {
+      address: nativeTokenAddress,
+      symbol: "WETH",
+      decimals: 18,
+      chain: "evm",
+    };
+  }
+
+  if (preferredTokens.length === 0) {
+    throw new Error("No EVM bluechip token configured");
+  }
+
+  return preferredTokens[0];
+}
+
 /** Pick an intermediate bluechip token (priority: USDT > USDC > wNEAR; fallback to `wrapNearContractId`). */
 export function findBestBluechipToken(
   bluechipTokens: BluechipTokensConfig,

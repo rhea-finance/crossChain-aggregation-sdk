@@ -10,8 +10,11 @@ import {
 } from "../types";
 import {
   isNearIntentsSupportedToken,
+  isEvmIntentsSupportedToken,
   findBestBluechipToken,
+  findBestEvmBluechipToken,
   normalizeTokenId,
+  normalizeEvmAddress,
   convertSlippageToBasisPoints,
   normalizeDestinationAsset,
 } from "../utils";
@@ -28,6 +31,8 @@ export interface CompleteQuoteParams {
   refundTo?: string;
   customRecipientMsg?: string;
   appFees?: Array<{ recipient: string; fee: number }>;
+  /** Optional: EVM chain ID for precise chain identification (e.g., 1 for Ethereum, 56 for BSC) */
+  evmChainId?: number;
 }
 
 export interface CompleteQuoteResult {
@@ -41,12 +46,12 @@ export interface CompleteQuoteResult {
     tokenIn: TokenInfo;
     tokenOut: TokenInfo;
     executor: DexRouter;
-    routeType?: "v1" | "v2";
+    routeType?: "v1" | "v2" | "evm";
   };
   finalAmountOut: string;
   totalPriceImpact?: number;
   totalFee?: number;
-  routeType?: "v1" | "v2" | "intents"; // Route type used
+  routeType?: "v1" | "v2" | "evm" | "intents"; // Route type used
 }
 
 export interface CompleteQuoteConfig {
@@ -56,6 +61,8 @@ export interface CompleteQuoteConfig {
   bluechipTokens: BluechipTokensConfig;
   configAdapter: {
     getWrapNearContractId(): string;
+    /** Optional: Get native wrapped token address for EVM chains (e.g., WETH) */
+    getEvmNativeWrappedTokenAddress?(): string;
   };
   currentUserAddress?: string;
   /** Optional function to check if token supports Intents (beyond bluechip tokens) */
@@ -63,13 +70,7 @@ export interface CompleteQuoteConfig {
 }
 
 /**
- * Build a "complete quote":
- * - If `sourceToken` is not NearIntents-supported, pre-swap to a bluechip token on NEAR DEX.
- * - Quote NearIntents using (pre-swap output) or `amountIn`.
- *
- * Notes:
- * - Prefer `slippage` in bps (e.g. 50 = 0.5%); we also accept percent/decimal inputs.
- * - `targetChain` is currently reserved for future use.
+ * Build a complete quote with optional pre-swap
  */
 export async function completeQuote(
   params: CompleteQuoteParams,
@@ -78,7 +79,7 @@ export async function completeQuote(
   const {
     sourceToken,
     targetToken,
-    sourceChain: _sourceChain, // Reserved for future use
+    sourceChain,
     targetChain: _targetChain, // Reserved for future use
     amountIn,
     slippage,
@@ -86,6 +87,7 @@ export async function completeQuote(
     refundTo,
     customRecipientMsg,
     appFees,
+    evmChainId,
   } = params;
 
   const {
@@ -100,43 +102,51 @@ export async function completeQuote(
   const wrapNearContractId = configAdapter.getWrapNearContractId();
 
   const routers = dexRouters || (dexRouter ? [dexRouter] : []);
-  if (routers.length === 0) {
-    throw new Error("At least one DEX router is required");
-  }
+  // Allow routers to be empty (non-Bitget supported chains direct Intents)
+  // Ensure isTokenIntentsSupported is true
 
   const userAddress = currentUserAddress || recipient;
   if (!userAddress) {
-    throw new Error("currentUserAddress or recipient is required for V2 Router");
+    throw new Error("currentUserAddress or recipient is required for routers that require recipient");
   }
 
-  if (!sourceToken?.address) {
+  // Check if token address is undefined (not provided)
+  // Note: Empty string "" is valid for native tokens (ETH), so we only check for undefined
+  if (sourceToken?.address === undefined) {
     throw new Error("Source token address is required");
   }
-  if (!targetToken?.address) {
+  if (targetToken?.address === undefined) {
     throw new Error("Target token address is required");
   }
 
-  // Check if token supports Intents:
-  // 1. Custom checker (e.g., from nearTokenInList)
-  // 2. Bluechip token checker (fallback)
+  const isEvmChain = evmChainId !== undefined ||
+                     sourceChain === "evm" || 
+                     sourceChain === "ethereum" || 
+                     sourceChain === "bsc" || 
+                     sourceChain === "polygon" ||
+                     sourceChain === "base" ||
+                     sourceChain === "monad" ||
+                     sourceToken.chain === "evm";
+
   const isTokenIntentsSupported = customIsIntentsSupportedToken
     ? customIsIntentsSupportedToken(sourceToken)
+    : isEvmChain
+    ? isEvmIntentsSupportedToken(sourceToken, bluechipTokens)
     : isNearIntentsSupportedToken(sourceToken, bluechipTokens);
 
-  const bluechipToken = findBestBluechipToken(
-    bluechipTokens,
-    wrapNearContractId
-  );
+  const bluechipToken = isEvmChain
+    ? findBestEvmBluechipToken(
+        bluechipTokens,
+        configAdapter.getEvmNativeWrappedTokenAddress?.()
+      )
+    : findBestBluechipToken(bluechipTokens, wrapNearContractId);
 
   if (!bluechipToken?.address) {
     throw new Error("Failed to find bluechip token address");
   }
 
-  // Prepare all quote paths for parallel execution
-  // If token supports Intents, we have 3 paths: V1+Intents, V2+Intents, Direct Intents
-  // If token doesn't support Intents, we have 2 paths: V1+Intents, V2+Intents
   const quotePaths: Array<{
-    type: "v1" | "v2" | "intents";
+    type: "v1" | "v2" | "evm" | "intents";
     promise: Promise<{
       intentsQuote: any;
       preSwapQuote?: QuoteResult;
@@ -146,9 +156,17 @@ export async function completeQuote(
     router?: DexRouter;
   }> = [];
 
-  // Path 1 & 2: V1/V2 Router + Intents (always available)
   routers.forEach((router, index) => {
-    const routeType: "v1" | "v2" = index === 0 ? "v1" : "v2";
+    const supportedChain = router.getSupportedChain();
+    const isEvmRouter = supportedChain === "evm";
+    
+    let routeType: "v1" | "v2" | "evm";
+    if (isEvmRouter) {
+      routeType = "evm";
+    } else {
+      routeType = index === 0 ? "v1" : "v2";
+    }
+    
     const capabilities = router.getCapabilities();
 
     const quoteParams: QuoteParams = capabilities.requiresRecipient
@@ -173,26 +191,36 @@ export async function completeQuote(
       type: routeType,
       router,
       promise: (async () => {
-        // Step 1: Get pre-swap quote
+        const logger = require("../utils/logger").logger;
+        
         const preSwapQuote = await router.quote(quoteParams);
         if (!preSwapQuote.success) {
-          throw new Error("Failed to get quote");
+          throw new Error(`Pre-swap quote failed: ${preSwapQuote.error || "Unknown error"}`);
         }
 
-        // Step 2: Get Intents quote with pre-swap output
-        const bluechipKey =
-          bluechipToken.symbol?.toUpperCase() === "WNEAR"
-            ? "NEAR"
-            : bluechipToken.symbol?.toUpperCase();
-        const bluechipTokenConfig =
-          (bluechipKey && bluechipTokens[bluechipKey]) || undefined;
-        const normalizedSourceAsset = bluechipTokenConfig?.assetId
-          ? bluechipTokenConfig.assetId
-          : `nep141:${bluechipToken.address}`;
+        let normalizedSourceAsset: string;
+        if (isEvmChain) {
+          const bluechipKey = bluechipToken.symbol?.toUpperCase();
+          const bluechipTokenConfig =
+            (bluechipKey && bluechipTokens[bluechipKey]) || undefined;
+          normalizedSourceAsset = bluechipTokenConfig?.assetId
+            ? bluechipTokenConfig.assetId
+            : `evm:${normalizeEvmAddress(bluechipToken.address)}`;
+        } else {
+          const bluechipKey =
+            bluechipToken.symbol?.toUpperCase() === "WNEAR"
+              ? "NEAR"
+              : bluechipToken.symbol?.toUpperCase();
+          const bluechipTokenConfig =
+            (bluechipKey && bluechipTokens[bluechipKey]) || undefined;
+          normalizedSourceAsset = bluechipTokenConfig?.assetId
+            ? bluechipTokenConfig.assetId
+            : `nep141:${bluechipToken.address}`;
+        }
 
         let normalizedTargetAsset = targetToken.address;
         if (normalizedTargetAsset?.startsWith("1cs_v1:")) {
-          // Keep 1cs_v1: format as is
+          // Keep 1cs_v1 format
         } else if (
           normalizedTargetAsset &&
           !normalizedTargetAsset.startsWith("nep141:") &&
@@ -211,67 +239,83 @@ export async function completeQuote(
         }
 
         const slippageBps = convertSlippageToBasisPoints(slippage);
-        const intentsQuote = await intentsQuotationAdapter.quote({
-          originAsset: normalizedSourceAsset,
-          destinationAsset: normalizedTargetAsset,
-          amount: preSwapQuote.amountOut,
-          refundTo: refundTo || recipient,
-          recipient,
-          slippageTolerance: slippageBps,
-          swapType: "FLEX_INPUT",
-          ...(customRecipientMsg ? { customRecipientMsg } : {}),
-          ...(appFees ? { appFees } : {}),
-        });
-
-        if (intentsQuote.quoteStatus !== "success") {
-          throw new Error("Failed to get quote");
+        
+        let formattedAmountOut = preSwapQuote.amountOut;
+        if (isEvmChain && bluechipToken.decimals !== undefined) {
+          try {
+            const amountBN = new Big(preSwapQuote.amountOut);
+            if (amountBN.lte(0)) {
+              throw new Error(`Invalid amountOut: ${preSwapQuote.amountOut}`);
+            }
+            formattedAmountOut = amountBN.toFixed(0, Big.roundDown);
+          } catch (error: any) {
+            throw new Error(`Failed to process amountOut: ${error?.message || String(error)}`);
+          }
         }
-
-        return {
-          intentsQuote,
-          preSwapQuote,
-          router,
-          finalAmountOut:
-            intentsQuote.quoteSuccessResult?.quote?.amountOut || "0",
-        };
+        
+        try {
+          const intentsQuote = await intentsQuotationAdapter.quote({
+            originAsset: normalizedSourceAsset,
+            destinationAsset: normalizedTargetAsset,
+            amount: formattedAmountOut,
+            refundTo: refundTo || recipient,
+            recipient,
+            slippageTolerance: slippageBps,
+            swapType: "FLEX_INPUT",
+            ...(customRecipientMsg ? { customRecipientMsg } : {}),
+            ...(appFees ? { appFees } : {}),
+          });
+            
+          if (intentsQuote.quoteStatus !== "success") {
+            throw new Error(`Intents quote failed: ${intentsQuote.message || "Unknown error"}`);
+          }
+          
+          return {
+            intentsQuote,
+            preSwapQuote,
+            router,
+            finalAmountOut: intentsQuote.quoteSuccessResult?.quote?.amountOut || "0",
+          };
+        } catch (error: any) {
+          throw error;
+        }
       })(),
     });
   });
 
-  // Path 3: Direct Intents (only if token supports Intents)
   if (isTokenIntentsSupported) {
     quotePaths.push({
       type: "intents",
       promise: (async () => {
-        // Normalize source asset
         let normalizedSourceAsset: string;
-        if (sourceToken.symbol) {
-          const sourceKey = sourceToken.symbol.toUpperCase();
-          const sourceTokenConfig = bluechipTokens[sourceKey];
+        if (isEvmChain) {
+          const sourceKey = sourceToken.symbol?.toUpperCase();
+          const sourceTokenConfig = sourceKey ? bluechipTokens[sourceKey] : undefined;
+          // Handle native token (empty address)
+          if (sourceTokenConfig?.assetId) {
+            normalizedSourceAsset = sourceTokenConfig.assetId;
+          } else if (sourceToken.address === "") {
+            // Native token (ETH) - use symbol-based assetId or fallback
+            normalizedSourceAsset = `evm-${sourceChain}-native`;
+          } else {
+            normalizedSourceAsset = `evm:${normalizeEvmAddress(sourceToken.address)}`;
+          }
+        } else {
+          const sourceKey = sourceToken.symbol?.toUpperCase();
+          const sourceTokenConfig = sourceKey ? bluechipTokens[sourceKey] : undefined;
           if (sourceTokenConfig?.assetId) {
             normalizedSourceAsset = sourceTokenConfig.assetId;
           } else {
-            normalizedSourceAsset = normalizeTokenId(
-              sourceToken.address,
-              wrapNearContractId
-            );
+            normalizedSourceAsset = normalizeTokenId(sourceToken.address, wrapNearContractId);
             if (!normalizedSourceAsset.startsWith("nep141:")) {
               normalizedSourceAsset = `nep141:${normalizedSourceAsset}`;
             }
-          }
-        } else {
-          normalizedSourceAsset = normalizeTokenId(
-            sourceToken.address,
-            wrapNearContractId
-          );
-          if (!normalizedSourceAsset.startsWith("nep141:")) {
-            normalizedSourceAsset = `nep141:${normalizedSourceAsset}`;
           }
         }
 
         let normalizedTargetAsset = targetToken.address;
         if (normalizedTargetAsset?.startsWith("1cs_v1:")) {
-          // Keep 1cs_v1: format as is
+          // Keep 1cs_v1 format
         } else if (
           normalizedTargetAsset &&
           !normalizedTargetAsset.startsWith("nep141:") &&
@@ -314,20 +358,20 @@ export async function completeQuote(
     });
   }
 
-  // Execute all paths in parallel
   const pathResults = await Promise.allSettled(
     quotePaths.map((p) => p.promise)
   );
 
-  // Process results
   const validPaths: Array<{
-    type: "v1" | "v2" | "intents";
+    type: "v1" | "v2" | "evm" | "intents";
     intentsQuote: any;
     preSwapQuote?: QuoteResult;
     router?: DexRouter;
     finalAmountOut: string;
   }> = [];
 
+  const logger = require("../utils/logger").logger;
+  
   pathResults.forEach((result, index) => {
     const pathType = quotePaths[index].type;
     if (result.status === "fulfilled") {
@@ -342,13 +386,11 @@ export async function completeQuote(
     throw new Error("Failed to get quote");
   }
 
-  // Select path with maximum finalAmountOut
   const bestPath = validPaths.reduce((best, current) => {
     const bestAmount = new Big(best.finalAmountOut);
     const currentAmount = new Big(current.finalAmountOut);
     return currentAmount.gt(bestAmount) ? current : best;
   });
-
 
   const depositAddress =
     bestPath.intentsQuote.quoteSuccessResult?.quote?.depositAddress || "";
@@ -369,7 +411,7 @@ export async function completeQuote(
             tokenIn: sourceToken,
             tokenOut: bluechipToken,
             executor: bestPath.router,
-            routeType: bestPath.type as "v1" | "v2",
+            routeType: bestPath.type as "v1" | "v2" | "evm",
           }
         : undefined,
     finalAmountOut: bestPath.finalAmountOut,
