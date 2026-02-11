@@ -1,6 +1,6 @@
 {
   "name": "@rhea-finance/cross-chain-aggregation-dex",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "TypeScript SDK for cross-chain DEX aggregation and routing on NEAR. Supports multi-DEX routing, automatic token registration, pre-swap handling, and NearIntents bridge integration for seamless cross-chain token swaps.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
