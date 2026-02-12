@@ -19,6 +19,7 @@ import {
   normalizeDestinationAsset,
 } from "../utils";
 import { IntentsQuotationAdapter } from "../adapters/types";
+import { ErrorMessages } from "../utils/errorMessages";
 
 export interface CompleteQuoteParams {
   sourceToken: TokenInfo;
@@ -107,16 +108,16 @@ export async function completeQuote(
 
   const userAddress = currentUserAddress || recipient;
   if (!userAddress) {
-    throw new Error("currentUserAddress or recipient is required for routers that require recipient");
+    throw new Error(ErrorMessages.MISSING_USER_ADDRESS);
   }
 
   // Check if token address is undefined (not provided)
   // Note: Empty string "" is valid for native tokens (ETH), so we only check for undefined
   if (sourceToken?.address === undefined) {
-    throw new Error("Source token address is required");
+    throw new Error(ErrorMessages.MISSING_TOKEN_ADDRESS);
   }
   if (targetToken?.address === undefined) {
-    throw new Error("Target token address is required");
+    throw new Error(ErrorMessages.MISSING_TOKEN_ADDRESS);
   }
 
   const isEvmChain = evmChainId !== undefined ||
@@ -142,7 +143,7 @@ export async function completeQuote(
     : findBestBluechipToken(bluechipTokens, wrapNearContractId);
 
   if (!bluechipToken?.address) {
-    throw new Error("Failed to find bluechip token address");
+    throw new Error(ErrorMessages.QUOTE_FAILED);
   }
 
   const quotePaths: Array<{
@@ -193,7 +194,7 @@ export async function completeQuote(
       promise: (async () => {
         const preSwapQuote = await router.quote(quoteParams);
         if (!preSwapQuote.success) {
-          throw new Error(`Pre-swap quote failed: ${preSwapQuote.error || "Unknown error"}`);
+          throw new Error(ErrorMessages.QUOTE_FAILED);
         }
 
         let normalizedSourceAsset: string;
@@ -243,11 +244,11 @@ export async function completeQuote(
           try {
             const amountBN = new Big(preSwapQuote.amountOut);
             if (amountBN.lte(0)) {
-              throw new Error(`Invalid amountOut: ${preSwapQuote.amountOut}`);
+              throw new Error(ErrorMessages.QUOTE_INVALID);
             }
             formattedAmountOut = amountBN.toFixed(0, Big.roundDown);
           } catch (error: any) {
-            throw new Error(`Failed to process amountOut: ${error?.message || String(error)}`);
+            throw new Error(ErrorMessages.QUOTE_FAILED);
           }
         }
         
@@ -264,9 +265,9 @@ export async function completeQuote(
             ...(appFees ? { appFees } : {}),
           });
             
-          if (intentsQuote.quoteStatus !== "success") {
-            throw new Error(`Intents quote failed: ${intentsQuote.message || "Unknown error"}`);
-          }
+        if (intentsQuote.quoteStatus !== "success") {
+          throw new Error(ErrorMessages.QUOTE_FAILED);
+        }
           
           return {
             intentsQuote,
@@ -344,7 +345,7 @@ export async function completeQuote(
         });
 
         if (intentsQuote.quoteStatus !== "success") {
-          throw new Error("Failed to get quote");
+          throw new Error(ErrorMessages.QUOTE_FAILED);
         }
 
         return {
@@ -379,7 +380,7 @@ export async function completeQuote(
   });
 
   if (validPaths.length === 0) {
-    throw new Error("Failed to get quote");
+    throw new Error(ErrorMessages.QUOTE_FAILED);
   }
 
   const bestPath = validPaths.reduce((best, current) => {
@@ -392,7 +393,7 @@ export async function completeQuote(
     bestPath.intentsQuote.quoteSuccessResult?.quote?.depositAddress || "";
 
   if (!depositAddress) {
-    throw new Error("Deposit address not found in intents quote");
+    throw new Error(ErrorMessages.QUOTE_INVALID);
   }
 
   return {

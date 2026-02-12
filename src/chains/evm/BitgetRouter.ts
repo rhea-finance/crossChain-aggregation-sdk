@@ -28,6 +28,7 @@ import {
   MAX_APPROVAL_RETRIES,
   APPROVAL_RETRY_DELAY_MS,
 } from "../../utils/bitgetUtils";
+import { ErrorMessages, normalizeError } from "../../utils/errorMessages";
 
 export interface BitgetRouterConfig {
   bitgetAdapter: BitgetAdapter;
@@ -77,7 +78,7 @@ export class BitgetRouter implements DexRouter {
           amountOut: "0",
           minAmountOut: "0",
           routes: [],
-          error: "Missing sender or recipient",
+          error: ErrorMessages.MISSING_USER_ADDRESS,
         };
       }
 
@@ -92,7 +93,7 @@ export class BitgetRouter implements DexRouter {
           amountOut: "0",
           minAmountOut: "0",
           routes: [],
-          error: "Missing sender or recipient",
+          error: ErrorMessages.MISSING_USER_ADDRESS,
         };
       }
 
@@ -105,7 +106,7 @@ export class BitgetRouter implements DexRouter {
           amountOut: "0",
           minAmountOut: "0",
           routes: [],
-          error: "Missing token address",
+          error: ErrorMessages.MISSING_TOKEN_ADDRESS,
         };
       }
 
@@ -135,7 +136,7 @@ export class BitgetRouter implements DexRouter {
       if (!isBitgetResponseSuccess(response) || !response.data) {
         return createQuoteError(
           params,
-          response.msg || "Failed to get quote"
+          normalizeError(response.msg) || ErrorMessages.QUOTE_FAILED
         );
       }
 
@@ -208,7 +209,7 @@ export class BitgetRouter implements DexRouter {
     } catch (error: any) {
       return createQuoteError(
         params,
-        error?.message || "Failed to get quote"
+        normalizeError(error?.message) || ErrorMessages.QUOTE_FAILED
       );
     }
   }
@@ -216,17 +217,17 @@ export class BitgetRouter implements DexRouter {
   async executeSwap(params: ExecuteParams): Promise<ExecuteResult> {
     try {
       if (!requiresRecipientInExecute(params)) {
-        return createExecuteError("Missing sender or receiveUser");
+        return createExecuteError(ErrorMessages.MISSING_USER_ADDRESS);
       }
 
       const { quote, sender, receiveUser } = params;
 
       if (!quote.success) {
-        return createExecuteError("Invalid quote");
+        return createExecuteError(ErrorMessages.EXECUTE_INVALID_QUOTE);
       }
 
       if (!receiveUser || receiveUser.trim() === "") {
-        return createExecuteError("Missing receiveUser");
+        return createExecuteError(ErrorMessages.MISSING_USER_ADDRESS);
       }
 
       let market: string;
@@ -235,14 +236,14 @@ export class BitgetRouter implements DexRouter {
           const routerMsg = JSON.parse(quote.routerMsg);
           market = routerMsg.market || "";
         } else {
-          return createExecuteError("Missing market from quote, please re-fetch quote");
+          return createExecuteError(ErrorMessages.QUOTE_EXPIRED);
         }
       } catch (error) {
-        return createExecuteError("Invalid quote format: missing market");
+        return createExecuteError(ErrorMessages.QUOTE_INVALID);
       }
 
       if (!market) {
-        return createExecuteError("Missing market from quote response");
+        return createExecuteError(ErrorMessages.QUOTE_INVALID);
       }
 
       const normalizedTokenIn = this.normalizeEvmAddress(
@@ -270,7 +271,7 @@ export class BitgetRouter implements DexRouter {
 
       if (!isBitgetResponseSuccess(reQuoteResponse) || !reQuoteResponse.data) {
         return createExecuteError(
-          `Re-quote failed: ${reQuoteResponse.msg || "Please refresh quote and try again"}`
+          normalizeError(reQuoteResponse.msg) || ErrorMessages.QUOTE_EXPIRED
         );
       }
 
@@ -293,14 +294,12 @@ export class BitgetRouter implements DexRouter {
 
       if (!isBitgetResponseSuccess(swapResponse) || !swapResponse.data) {
         return createExecuteError(
-          swapResponse.msg || "Failed to get swap calldata"
+          normalizeError(swapResponse.msg) || ErrorMessages.QUOTE_FAILED
         );
       }
 
       if (swapResponse.data?.estimateRevert === true) {
-        return createExecuteError(
-          "Transaction will fail on-chain (slippage too high or price changed). Please refresh quote."
-        );
+        return createExecuteError(ErrorMessages.EXECUTE_SLIPPAGE_TOO_HIGH);
       }
 
       let transactionData = swapResponse.data?.calldata || swapResponse.data?.data;
@@ -322,17 +321,17 @@ export class BitgetRouter implements DexRouter {
           : undefined);
 
       if (!to || !transactionData) {
-        return createExecuteError("Invalid swap response: missing to or data");
+        return createExecuteError(ErrorMessages.QUOTE_INVALID);
       }
       
       if (transactionData.length < 10 || !/^0x[0-9a-fA-F]+$/.test(transactionData)) {
-        return createExecuteError("Invalid calldata format: must be hex string starting with 0x");
+        return createExecuteError(ErrorMessages.QUOTE_INVALID);
       }
 
       // Check balance and approval for ERC20 tokens
       if (normalizedTokenIn && normalizedTokenIn !== "") {
         if (!this.evmChainAdapter.getBalance) {
-          return createExecuteError("getBalance method not available on evmChainAdapter");
+          return createExecuteError(ErrorMessages.NETWORK_ERROR);
         }
         const tokenBalanceFormatted = await this.evmChainAdapter.getBalance({
           address: sender,
@@ -344,9 +343,7 @@ export class BitgetRouter implements DexRouter {
         const amountInBN = ethers.BigNumber.from(quote.amountIn);
         
         if (balanceBN.lt(amountInBN)) {
-          return createExecuteError(
-            `Insufficient token balance: have ${tokenBalanceFormatted}, need ${ethers.utils.formatUnits(amountInBN, tokenDecimals)}`
-          );
+          return createExecuteError(ErrorMessages.EXECUTE_INSUFFICIENT_BALANCE);
         }
 
         const currentAllowance = await this.evmChainAdapter.getAllowance({
@@ -389,20 +386,18 @@ export class BitgetRouter implements DexRouter {
             }
             
             if (newAllowanceBN.lt(amountInBN)) {
-              return createExecuteError(
-                `Token approval insufficient after ${MAX_APPROVAL_RETRIES} retries. Approval tx: ${approveResult.txHash}`
-              );
+              return createExecuteError(ErrorMessages.NETWORK_ERROR);
             }
           } catch (error: any) {
             return createExecuteError(
-              `Token approval failed: ${error?.message || "Unknown error"}`
+              normalizeError(error?.message) || ErrorMessages.NETWORK_ERROR
             );
           }
         }
       } else {
         // Check native token balance (including gas)
         if (!this.evmChainAdapter.getBalance) {
-          return createExecuteError("getBalance method not available on evmChainAdapter");
+          return createExecuteError(ErrorMessages.NETWORK_ERROR);
         }
         const nativeBalanceFormatted = await this.evmChainAdapter.getBalance({
           address: sender,
@@ -430,9 +425,7 @@ export class BitgetRouter implements DexRouter {
         const totalRequired = amountInBN.add(gasCostEstimate);
         
         if (balanceBN.lt(totalRequired)) {
-          return createExecuteError(
-            `Insufficient native token balance: have ${nativeBalanceFormatted} ETH, need ${ethers.utils.formatEther(totalRequired)} ETH`
-          );
+          return createExecuteError(ErrorMessages.EXECUTE_INSUFFICIENT_BALANCE);
         }
       }
 
@@ -446,9 +439,7 @@ export class BitgetRouter implements DexRouter {
         const amountInBN = ethers.BigNumber.from(quote.amountIn);
         
         if (finalAllowanceBN.lt(amountInBN)) {
-          return createExecuteError(
-            `Insufficient allowance: current ${finalAllowanceBN.toString()}, required ${amountInBN.toString()}`
-          );
+          return createExecuteError(ErrorMessages.NETWORK_ERROR);
         }
       }
 
@@ -475,15 +466,11 @@ export class BitgetRouter implements DexRouter {
             tokenOut: quote.tokenOut.symbol,
             rpcError: rpcEstimateError,
           });
-          return createExecuteError(
-            "Insufficient liquidity, transaction may fail. Please refresh quote and try again."
-          );
+          return createExecuteError(ErrorMessages.EXECUTE_INSUFFICIENT_LIQUIDITY);
         }
 
         if (!gas || gas === "0") {
-          return createExecuteError(
-            "Unable to estimate gas fee, possibly due to insufficient liquidity. Please refresh quote and try again."
-          );
+          return createExecuteError(ErrorMessages.GAS_ESTIMATE_FAILED);
         }
 
         logger.warn("RPC gas estimation failed, using Bitget estimate", {
@@ -525,7 +512,7 @@ export class BitgetRouter implements DexRouter {
             feeData.maxFeePerGas.lte(0) || feeData.maxPriorityFeePerGas.lte(0)) {
           const cachedGasPrice = await getCachedGasPrice();
           if (!cachedGasPrice || cachedGasPrice.lte(0)) {
-            return createExecuteError("Failed to get valid gas price. Please try again.");
+            return createExecuteError(ErrorMessages.GAS_PRICE_FAILED);
           }
           feeData.maxFeePerGas = cachedGasPrice;
           feeData.maxPriorityFeePerGas = cachedGasPrice.div(10);
@@ -558,7 +545,7 @@ export class BitgetRouter implements DexRouter {
         } catch (error) {
           const cachedGasPrice = await getCachedGasPrice();
           if (!cachedGasPrice || cachedGasPrice.lte(0)) {
-            return createExecuteError("Failed to get valid gas price. Please try again.");
+            return createExecuteError(ErrorMessages.GAS_PRICE_FAILED);
           }
           feeData.gasPrice = cachedGasPrice;
         }
@@ -566,27 +553,27 @@ export class BitgetRouter implements DexRouter {
 
       // Final validation before building transaction
       if (!to || !ethers.utils.isAddress(to)) {
-        return createExecuteError(`Invalid contract address: ${to}`);
+        return createExecuteError(ErrorMessages.QUOTE_INVALID);
       }
 
       if (!transactionData || transactionData.length < 10) {
-        return createExecuteError(`Invalid calldata: length ${transactionData?.length || 0}`);
+        return createExecuteError(ErrorMessages.QUOTE_INVALID);
       }
 
       // Validate gas limit
       if (!estimatedGasLimit || estimatedGasLimit.lte(0)) {
-        return createExecuteError("Invalid gas limit estimate. Please refresh quote and try again.");
+        return createExecuteError(ErrorMessages.GAS_ESTIMATE_FAILED);
       }
 
       // Validate fee data based on chain type
       if (supportsEip1559) {
         if (!feeData.maxFeePerGas || !feeData.maxPriorityFeePerGas ||
             feeData.maxFeePerGas.lte(0) || feeData.maxPriorityFeePerGas.lte(0)) {
-          return createExecuteError("Invalid gas fee data. Please try again.");
+          return createExecuteError(ErrorMessages.GAS_PRICE_FAILED);
         }
       } else {
         if (!feeData.gasPrice || feeData.gasPrice.lte(0)) {
-          return createExecuteError("Invalid gas price. Please try again.");
+          return createExecuteError(ErrorMessages.GAS_PRICE_FAILED);
         }
       }
 
@@ -614,10 +601,10 @@ export class BitgetRouter implements DexRouter {
           txHashArray: result.txHash ? [result.txHash] : [],
         };
       } else {
-        return createExecuteError(result.message || "Execute swap failed");
+        return createExecuteError(normalizeError(result.message) || ErrorMessages.EXECUTE_FAILED);
       }
     } catch (error: any) {
-      return createExecuteError(error?.message || "Execute swap failed");
+      return createExecuteError(normalizeError(error?.message) || ErrorMessages.EXECUTE_FAILED);
     }
   }
 

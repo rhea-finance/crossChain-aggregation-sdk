@@ -15,6 +15,7 @@ import {
   normalizeTokenId,
   convertSlippageToBasisPoints,
 } from "../../utils";
+import { ErrorMessages, normalizeError } from "../../utils/errorMessages";
 import {
   SwapMultiDexPathAdapter,
   NearChainAdapter,
@@ -83,7 +84,7 @@ export class AggregateDexRouter implements DexRouter {
           amountOut: "0",
           minAmountOut: "0",
           routes: [],
-          error: "Missing sender or recipient",
+          error: ErrorMessages.MISSING_USER_ADDRESS,
         };
       }
 
@@ -98,7 +99,7 @@ export class AggregateDexRouter implements DexRouter {
           amountOut: "0",
           minAmountOut: "0",
           routes: [],
-          error: "Missing sender or recipient",
+          error: ErrorMessages.MISSING_USER_ADDRESS,
         };
       }
 
@@ -111,7 +112,7 @@ export class AggregateDexRouter implements DexRouter {
           amountOut: "0",
           minAmountOut: "0",
           routes: [],
-          error: "Missing token address",
+          error: ErrorMessages.MISSING_TOKEN_ADDRESS,
         };
       }
 
@@ -133,7 +134,7 @@ export class AggregateDexRouter implements DexRouter {
           amountOut: "0",
           minAmountOut: "0",
           routes: [],
-          error: "Invalid token address",
+          error: ErrorMessages.INVALID_TOKEN_ADDRESS,
         };
       }
 
@@ -159,7 +160,7 @@ export class AggregateDexRouter implements DexRouter {
           amountOut: "0",
           minAmountOut: "0",
           routes: [],
-          error: "Failed to get quote",
+          error: ErrorMessages.QUOTE_FAILED,
         };
       }
 
@@ -197,7 +198,7 @@ export class AggregateDexRouter implements DexRouter {
         amountOut: "0",
         minAmountOut: "0",
         routes: [],
-        error: "Failed to get quote",
+        error: normalizeError(error?.message) || ErrorMessages.QUOTE_FAILED,
       };
     }
   }
@@ -210,7 +211,7 @@ export class AggregateDexRouter implements DexRouter {
     depositAddress: string
   ): Promise<QuoteResult> {
     if (!requiresRecipient(params)) {
-      throw new Error("V2 Router requires recipient parameters");
+      throw new Error(ErrorMessages.MISSING_USER_ADDRESS);
     }
 
     return await this.quote({
@@ -235,7 +236,7 @@ export class AggregateDexRouter implements DexRouter {
     if (adjustedQuote.success && adjustedQuote.routerMsg && adjustedQuote.signature) {
       return adjustedQuote;
     } else {
-      throw new Error("Failed to get quote");
+      throw new Error(ErrorMessages.QUOTE_FAILED);
     }
   }
 
@@ -286,7 +287,7 @@ export class AggregateDexRouter implements DexRouter {
     }
     const quote = await this.quote(quoteParams);
     if (!quote.success) {
-      throw new Error("Failed to get quote");
+      throw new Error(ErrorMessages.QUOTE_FAILED);
     }
 
     if (quote.amountIn !== quoteParams.amountIn) {
@@ -314,7 +315,7 @@ export class AggregateDexRouter implements DexRouter {
       if (!requiresRecipientInExecute(params)) {
         return {
           success: false,
-          error: "Missing sender or receiveUser",
+          error: ErrorMessages.MISSING_USER_ADDRESS,
         };
       }
 
@@ -323,21 +324,21 @@ export class AggregateDexRouter implements DexRouter {
       if (!quote.success) {
         return {
           success: false,
-          error: "Invalid quote",
+          error: ErrorMessages.EXECUTE_INVALID_QUOTE,
         };
       }
 
       if (!receiveUser || receiveUser.trim() === "") {
         return {
           success: false,
-          error: "Missing receiveUser",
+          error: ErrorMessages.MISSING_USER_ADDRESS,
         };
       }
 
       if (receiveUser.startsWith("0x") && receiveUser.length === 42) {
         return {
           success: false,
-          error: "Invalid receiveUser address",
+          error: ErrorMessages.INVALID_USER_ADDRESS,
         };
       }
 
@@ -374,7 +375,7 @@ export class AggregateDexRouter implements DexRouter {
       } catch (error: any) {
         return {
           success: false,
-          error: "Failed to get quote",
+          error: normalizeError(error?.message) || ErrorMessages.QUOTE_FAILED,
         };
       }
 
@@ -384,7 +385,7 @@ export class AggregateDexRouter implements DexRouter {
       if (!routerMsg || !signature) {
         return {
           success: false,
-          error: "Failed to get quote",
+          error: ErrorMessages.QUOTE_FAILED,
         };
       }
 
@@ -640,7 +641,7 @@ export class AggregateDexRouter implements DexRouter {
       } catch (error: any) {
         return {
           success: false,
-          error: "Failed to get quote",
+          error: normalizeError(error?.message) || ErrorMessages.QUOTE_FAILED,
         };
       }
 
@@ -676,13 +677,13 @@ export class AggregateDexRouter implements DexRouter {
       } else {
         return {
           success: false,
-          error: "Execute swap failed",
+          error: normalizeError(result.message) || ErrorMessages.EXECUTE_FAILED,
         };
       }
     } catch (error: any) {
       return {
         success: false,
-        error: "Execute swap failed",
+        error: normalizeError(error?.message) || ErrorMessages.EXECUTE_FAILED,
       };
     }
   }

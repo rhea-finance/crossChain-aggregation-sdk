@@ -1,4 +1,5 @@
 import { TokenInfo, BluechipTokensConfig } from "../types";
+import { ErrorMessages } from "./errorMessages";
 
 let bluechipTokensConfig: BluechipTokensConfig | null = null;
 
@@ -165,7 +166,7 @@ export function findBestEvmBluechipToken(
   }
 
   if (preferredTokens.length === 0) {
-    throw new Error("No EVM bluechip token configured");
+    throw new Error(ErrorMessages.QUOTE_FAILED);
   }
 
   return preferredTokens[0];
@@ -392,3 +393,4 @@ export function selectBestQuote<T extends { amountOut: string }, R = any>(
 }
 
 export { logger } from "./logger";
+export { ErrorMessages, normalizeError, getErrorMessage } from "./errorMessages";

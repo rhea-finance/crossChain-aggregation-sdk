@@ -14,6 +14,7 @@ import {
   normalizeTokenId,
   convertSlippageToBasisPoints,
 } from "../../utils";
+import { ErrorMessages, normalizeError } from "../../utils/errorMessages";
 import {
   FindPathAdapter,
   NearChainAdapter,
@@ -66,7 +67,7 @@ export class NearSmartRouter implements DexRouter {
           amountOut: "0",
           minAmountOut: "0",
           routes: [],
-          error: "Missing token address",
+          error: ErrorMessages.MISSING_TOKEN_ADDRESS,
         };
       }
 
@@ -88,7 +89,7 @@ export class NearSmartRouter implements DexRouter {
           amountOut: "0",
           minAmountOut: "0",
           routes: [],
-          error: "Invalid token address",
+          error: ErrorMessages.INVALID_TOKEN_ADDRESS,
         };
       }
 
@@ -115,7 +116,7 @@ export class NearSmartRouter implements DexRouter {
           amountOut: "0",
           minAmountOut: "0",
           routes: [],
-          error: response?.result_msg || response?.result_message || "No route found",
+          error: normalizeError(response?.result_msg || response?.result_message) || ErrorMessages.QUOTE_NO_ROUTE,
         };
       }
 
@@ -160,7 +161,7 @@ export class NearSmartRouter implements DexRouter {
         amountOut: "0",
         minAmountOut: "0",
         routes: [],
-        error: error?.message || "Quote failed",
+        error: normalizeError(error?.message) || ErrorMessages.QUOTE_FAILED,
       };
     }
   }
@@ -175,7 +176,7 @@ export class NearSmartRouter implements DexRouter {
       if (!quote.success || !quote.routes.length) {
         return {
           success: false,
-          error: "Invalid quote",
+          error: ErrorMessages.EXECUTE_INVALID_QUOTE,
         };
       }
 
@@ -201,7 +202,7 @@ export class NearSmartRouter implements DexRouter {
       if (!swapActions.length) {
         return {
           success: false,
-          error: "No swap actions",
+          error: ErrorMessages.QUOTE_INVALID,
         };
       }
 
@@ -322,13 +323,13 @@ export class NearSmartRouter implements DexRouter {
       } else {
         return {
           success: false,
-          error: result.message || "Execute swap failed",
+          error: normalizeError(result.message) || ErrorMessages.EXECUTE_FAILED,
         };
       }
     } catch (error: any) {
       return {
         success: false,
-        error: error?.message || "Execute swap failed",
+        error: normalizeError(error?.message) || ErrorMessages.EXECUTE_FAILED,
       };
     }
   }

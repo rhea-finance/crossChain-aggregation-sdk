@@ -5,6 +5,7 @@
 
 import { TokenInfo, QuoteParams, QuoteResult, DexRouter } from "../types";
 import { selectBestQuote } from "../utils";
+import { ErrorMessages } from "../utils/errorMessages";
 
 export interface QuoteSameChainSwapParams {
   tokenIn: TokenInfo;
@@ -86,7 +87,7 @@ export async function quoteSameChainSwap(
         return null;
       })
       .filter(Boolean);
-    throw new Error(`All router quotes failed: ${errors.join("; ")}`);
+    throw new Error(ErrorMessages.QUOTE_FAILED);
   }
 
   // Select best quote (maximum amountOut)
