@@ -87,7 +87,10 @@ export async function quoteSameChainSwap(
         return null;
       })
       .filter(Boolean);
-    throw new Error(ErrorMessages.QUOTE_FAILED);
+    const errorMessage = errors.length > 0 
+      ? `${ErrorMessages.QUOTE_FAILED}: ${errors.join("; ")}`
+      : ErrorMessages.QUOTE_FAILED;
+    throw new Error(errorMessage);
   }
 
   // Select best quote (maximum amountOut)
