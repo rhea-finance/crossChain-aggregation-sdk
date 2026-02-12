@@ -67,7 +67,7 @@ export class NearSmartRouter implements DexRouter {
           amountOut: "0",
           minAmountOut: "0",
           routes: [],
-          error: ErrorMessages.MISSING_TOKEN_ADDRESS,
+          error: ErrorMessages.QUOTE_FAILED,
         };
       }
 
@@ -89,7 +89,7 @@ export class NearSmartRouter implements DexRouter {
           amountOut: "0",
           minAmountOut: "0",
           routes: [],
-          error: ErrorMessages.INVALID_TOKEN_ADDRESS,
+          error: ErrorMessages.QUOTE_FAILED,
         };
       }
 
@@ -116,7 +116,7 @@ export class NearSmartRouter implements DexRouter {
           amountOut: "0",
           minAmountOut: "0",
           routes: [],
-          error: normalizeError(response?.result_msg || response?.result_message) || ErrorMessages.QUOTE_NO_ROUTE,
+          error: normalizeError(response?.result_msg || response?.result_message) || ErrorMessages.QUOTE_FAILED,
         };
       }
 
@@ -176,7 +176,7 @@ export class NearSmartRouter implements DexRouter {
       if (!quote.success || !quote.routes.length) {
         return {
           success: false,
-          error: ErrorMessages.EXECUTE_INVALID_QUOTE,
+          error: ErrorMessages.QUOTE_FAILED,
         };
       }
 
@@ -202,7 +202,7 @@ export class NearSmartRouter implements DexRouter {
       if (!swapActions.length) {
         return {
           success: false,
-          error: ErrorMessages.QUOTE_INVALID,
+          error: ErrorMessages.QUOTE_FAILED,
         };
       }
 

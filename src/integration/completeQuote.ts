@@ -108,16 +108,16 @@ export async function completeQuote(
 
   const userAddress = currentUserAddress || recipient;
   if (!userAddress) {
-    throw new Error(ErrorMessages.MISSING_USER_ADDRESS);
+    throw new Error(ErrorMessages.QUOTE_FAILED);
   }
 
   // Check if token address is undefined (not provided)
   // Note: Empty string "" is valid for native tokens (ETH), so we only check for undefined
   if (sourceToken?.address === undefined) {
-    throw new Error(ErrorMessages.MISSING_TOKEN_ADDRESS);
+    throw new Error(ErrorMessages.QUOTE_FAILED);
   }
   if (targetToken?.address === undefined) {
-    throw new Error(ErrorMessages.MISSING_TOKEN_ADDRESS);
+    throw new Error(ErrorMessages.QUOTE_FAILED);
   }
 
   const isEvmChain = evmChainId !== undefined ||
@@ -244,7 +244,7 @@ export async function completeQuote(
           try {
             const amountBN = new Big(preSwapQuote.amountOut);
             if (amountBN.lte(0)) {
-              throw new Error(ErrorMessages.QUOTE_INVALID);
+              throw new Error(ErrorMessages.QUOTE_FAILED);
             }
             formattedAmountOut = amountBN.toFixed(0, Big.roundDown);
           } catch (error: any) {
@@ -393,7 +393,7 @@ export async function completeQuote(
     bestPath.intentsQuote.quoteSuccessResult?.quote?.depositAddress || "";
 
   if (!depositAddress) {
-    throw new Error(ErrorMessages.QUOTE_INVALID);
+    throw new Error(ErrorMessages.QUOTE_FAILED);
   }
 
   return {

@@ -84,7 +84,7 @@ export class AggregateDexRouter implements DexRouter {
           amountOut: "0",
           minAmountOut: "0",
           routes: [],
-          error: ErrorMessages.MISSING_USER_ADDRESS,
+          error: ErrorMessages.QUOTE_FAILED,
         };
       }
 
@@ -99,7 +99,7 @@ export class AggregateDexRouter implements DexRouter {
           amountOut: "0",
           minAmountOut: "0",
           routes: [],
-          error: ErrorMessages.MISSING_USER_ADDRESS,
+          error: ErrorMessages.QUOTE_FAILED,
         };
       }
 
@@ -112,7 +112,7 @@ export class AggregateDexRouter implements DexRouter {
           amountOut: "0",
           minAmountOut: "0",
           routes: [],
-          error: ErrorMessages.MISSING_TOKEN_ADDRESS,
+          error: ErrorMessages.QUOTE_FAILED,
         };
       }
 
@@ -134,7 +134,7 @@ export class AggregateDexRouter implements DexRouter {
           amountOut: "0",
           minAmountOut: "0",
           routes: [],
-          error: ErrorMessages.INVALID_TOKEN_ADDRESS,
+          error: ErrorMessages.QUOTE_FAILED,
         };
       }
 
@@ -211,7 +211,7 @@ export class AggregateDexRouter implements DexRouter {
     depositAddress: string
   ): Promise<QuoteResult> {
     if (!requiresRecipient(params)) {
-      throw new Error(ErrorMessages.MISSING_USER_ADDRESS);
+      throw new Error(ErrorMessages.QUOTE_FAILED);
     }
 
     return await this.quote({
@@ -315,7 +315,7 @@ export class AggregateDexRouter implements DexRouter {
       if (!requiresRecipientInExecute(params)) {
         return {
           success: false,
-          error: ErrorMessages.MISSING_USER_ADDRESS,
+          error: ErrorMessages.QUOTE_FAILED,
         };
       }
 
@@ -324,21 +324,21 @@ export class AggregateDexRouter implements DexRouter {
       if (!quote.success) {
         return {
           success: false,
-          error: ErrorMessages.EXECUTE_INVALID_QUOTE,
+          error: ErrorMessages.QUOTE_FAILED,
         };
       }
 
       if (!receiveUser || receiveUser.trim() === "") {
         return {
           success: false,
-          error: ErrorMessages.MISSING_USER_ADDRESS,
+          error: ErrorMessages.QUOTE_FAILED,
         };
       }
 
       if (receiveUser.startsWith("0x") && receiveUser.length === 42) {
         return {
           success: false,
-          error: ErrorMessages.INVALID_USER_ADDRESS,
+          error: ErrorMessages.QUOTE_FAILED,
         };
       }
 
