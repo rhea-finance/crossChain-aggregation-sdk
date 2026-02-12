@@ -356,7 +356,7 @@ export class BitgetRouter implements DexRouter {
 
         if (allowanceBN.lt(amountInBN)) {
           try {
-            const approveResult = await this.evmChainAdapter.approve({
+            await this.evmChainAdapter.approve({
               tokenAddress: normalizedTokenIn,
               spender: to,
               amount: ethers.constants.MaxUint256.toString(),
