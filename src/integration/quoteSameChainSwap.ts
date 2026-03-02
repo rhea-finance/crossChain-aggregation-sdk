@@ -64,36 +64,47 @@ export async function quoteSameChainSwap(
     })
   );
 
-  // Filter valid quotes
-  const validQuotes = quoteResults
+  const fulfilledResults = quoteResults
     .filter(
-      (r): r is PromiseFulfilledResult<QuoteResult> =>
-        r.status === "fulfilled" && r.value.success
+      (r): r is PromiseFulfilledResult<QuoteResult> => r.status === "fulfilled"
     )
     .map((r, index) => ({
-      quote: r.value,
+      result: r.value,
       router: dexRouters[index],
+      index,
     }));
 
-  if (validQuotes.length === 0) {
-    const errors = quoteResults
-      .map((r, index) => {
-        if (r.status === "rejected") {
-          return `Router ${index}: ${r.reason}`;
-        }
-        if (r.status === "fulfilled" && !r.value.success) {
-          return `Router ${index}: ${r.value.error}`;
-        }
-        return null;
-      })
-      .filter(Boolean);
-    const errorMessage = errors.length > 0 
-      ? `${ErrorMessages.QUOTE_FAILED}: ${errors.join("; ")}`
-      : ErrorMessages.QUOTE_FAILED;
-    throw new Error(errorMessage);
+  const validQuotes = fulfilledResults
+    .filter((r) => r.result.success)
+    .map((r) => ({
+      quote: r.result,
+      router: r.router,
+    }));
+
+  if (validQuotes.length > 0) {
+    return selectBestQuote(validQuotes);
   }
 
-  // Select best quote (maximum amountOut)
-  return selectBestQuote(validQuotes);
+  const errors = fulfilledResults
+    .filter((r) => !r.result.success)
+    .map((r) => {
+      const error = r.result.error || "";
+      const is429 =
+        error.includes("429") ||
+        error.toLowerCase().includes("rate limit") ||
+        error.toLowerCase().includes("too many requests");
+      return is429 ? null : `Router ${r.index}: ${error}`;
+    })
+    .filter(Boolean) as string[];
+
+  if (errors.length === 0) {
+    throw new Error("All liquidity providers are busy. Please try again later.");
+  }
+
+  const errorMessage =
+    errors.length > 0
+      ? `${ErrorMessages.QUOTE_FAILED}: ${errors.join("; ")}`
+      : ErrorMessages.QUOTE_FAILED;
+  throw new Error(errorMessage);
 }
 

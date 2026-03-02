@@ -393,4 +393,4 @@ export function selectBestQuote<T extends { amountOut: string }, R = any>(
 }
 
 export { logger } from "./logger";
-export { ErrorMessages, normalizeError, getErrorMessage, processErrorMessage, TRANSACTION_EXECUTION_ERROR_MESSAGE } from "./errorMessages";
+export { ErrorMessages, normalizeError, normalizeErrorForIntents, getErrorMessage, processErrorMessage, formatErrorMessage, TRANSACTION_EXECUTION_ERROR_MESSAGE } from "./errorMessages";

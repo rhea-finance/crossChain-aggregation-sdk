@@ -8,6 +8,7 @@ export * from "./chains/near/NearSmartRouter";
 export * from "./chains/near/AggregateDexRouter";
 
 export * from "./chains/evm/BitgetRouter";
+export * from "./chains/evm/OkxRouter";
 
 export * from "./integration/completeQuote";
 export * from "./integration/quoteSameChainSwap";

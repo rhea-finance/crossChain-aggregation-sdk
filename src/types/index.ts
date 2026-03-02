@@ -7,6 +7,10 @@ export interface TokenInfo {
   symbol: string;
   decimals: number;
   chain: string;
+  /** Optional: Intents assetId (e.g., nep245:..., nep141:...) provided by backend */
+  assetId?: string;
+  /** Optional: Platform identifier ("nearIntents" | "okx" | "bitget") */
+  platform?: string;
 }
 
 export interface Route {

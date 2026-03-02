@@ -265,3 +265,120 @@ export interface EvmChainAdapter {
    */
   getSigner?(): Promise<any>;
 }
+
+/** OKX DEX Aggregator API Quote response. */
+export interface OkxQuoteResponse {
+  code?: string | number;
+  msg?: string;
+  data?: Array<{
+    chainIndex?: string;
+    fromToken: {
+      tokenSymbol?: string;
+      decimal: string | number;
+      tokenAddress?: string;
+      isHoneyPot?: boolean;
+      taxRate?: string;
+      [key: string]: any;
+    };
+    toToken: {
+      tokenSymbol?: string;
+      decimal: string | number;
+      tokenAddress?: string;
+      isHoneyPot?: boolean;
+      taxRate?: string;
+      [key: string]: any;
+    };
+    fromTokenAmount: string;
+    toTokenAmount: string;
+    estimateGasFee?: string;
+    priceImpactPercent?: string;
+    dexRouterList?: any[];
+    router?: string;
+    swapMode?: string;
+    tradeFee?: string;
+    contextSlot?: number;
+    fromAmount?: string;
+    toAmount?: string;
+    minToAmount?: string;
+    estimatedGas?: string;
+    priceImpact?: string;
+    routes?: any[];
+    [key: string]: any;
+  }>;
+}
+
+/** OKX DEX Aggregator API Swap response. */
+export interface OkxSwapResponse {
+  code?: string | number;
+  msg?: string;
+  data?: {
+    transaction?: {
+      data?: string; // calldata
+      to?: string; // contract address
+      value?: string; // native token value
+      gas?: string;
+      gasPrice?: string;
+    };
+    data?: string; // Alternative field name for calldata
+    to?: string; // Alternative field name for contract
+    value?: string;
+    gas?: string;
+    txHash?: string;
+    explorerUrl?: string;
+    [key: string]: any;
+  };
+}
+
+/** Adapter for OKX DEX Aggregator API. */
+export interface OkxAdapter {
+  quote(params: {
+    chainId: number;
+    tokenIn: string;
+    tokenOut: string;
+    amountIn: string;
+    slippage: number;
+    userAddress: string;
+    // Optional: token metadata for API request
+    tokenInSymbol?: string;
+    tokenInDecimals?: number;
+    tokenOutSymbol?: string;
+    tokenOutDecimals?: number;
+  }): Promise<OkxQuoteResponse>;
+
+  /**
+   * Get final calldata for swap execution
+   */
+  swap(params: {
+    chainId: number;
+    tokenIn: string;
+    tokenOut: string;
+    amountIn: string;
+    minAmountOut?: string;
+    slippage: number;
+    fromAddress: string;
+    toAddress: string; // Recipient address
+    tokenInSymbol?: string;
+    tokenInDecimals?: number;
+    tokenOutSymbol?: string;
+    tokenOutDecimals?: number;
+  }): Promise<OkxSwapResponse>;
+
+  /**
+   * Get OKX approve transaction data
+   * Reference: https://web3.okx.com/zh-hans/onchain-os/dev-docs/trade-api/dex-approve-transaction
+   */
+  getApproveTransaction(params: {
+    chainId: number;
+    tokenAddress: string;
+    approveAmount: string;
+  }): Promise<{
+    code: string | number;
+    msg?: string;
+    data?: {
+      data: string;
+      dexContractAddress: string;
+      gasLimit: string;
+      gasPrice: string;
+    };
+  }>;
+}

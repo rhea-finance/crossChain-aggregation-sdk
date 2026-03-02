@@ -116,7 +116,7 @@ export class NearSmartRouter implements DexRouter {
           amountOut: "0",
           minAmountOut: "0",
           routes: [],
-          error: normalizeError(response?.result_msg || response?.result_message) || ErrorMessages.QUOTE_FAILED,
+          error: response?.result_msg || response?.result_message || ErrorMessages.QUOTE_FAILED,
         };
       }
 
@@ -161,7 +161,7 @@ export class NearSmartRouter implements DexRouter {
         amountOut: "0",
         minAmountOut: "0",
         routes: [],
-        error: normalizeError(error?.message) || ErrorMessages.QUOTE_FAILED,
+        error: error?.message || ErrorMessages.QUOTE_FAILED,
       };
     }
   }
@@ -240,7 +240,7 @@ export class NearSmartRouter implements DexRouter {
               registration_only: true,
             },
             gas: "50000000000000",
-            expandDeposit: "1250000000000000000000", // 0.00125 NEAR
+            expandDeposit: "1250000000000000000000",
           });
         }
 
@@ -305,7 +305,6 @@ export class NearSmartRouter implements DexRouter {
           msg: JSON.stringify(swapMsg),
         },
         gas: "250",
-        // NEP-141 requires attaching 1 yoctoNEAR for certain calls.
         expandDeposit: "1",
       });
 

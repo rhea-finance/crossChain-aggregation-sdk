@@ -78,7 +78,7 @@ export class BitgetRouter implements DexRouter {
           amountOut: "0",
           minAmountOut: "0",
           routes: [],
-          error: ErrorMessages.QUOTE_FAILED,
+          error: "Bitget quote failed: Router requires recipient address",
         };
       }
 
@@ -93,7 +93,7 @@ export class BitgetRouter implements DexRouter {
           amountOut: "0",
           minAmountOut: "0",
           routes: [],
-          error: ErrorMessages.QUOTE_FAILED,
+          error: "Bitget quote failed: Sender and recipient addresses are required",
         };
       }
 
@@ -106,7 +106,7 @@ export class BitgetRouter implements DexRouter {
           amountOut: "0",
           minAmountOut: "0",
           routes: [],
-          error: ErrorMessages.QUOTE_FAILED,
+          error: "Bitget quote failed: Token addresses are required",
         };
       }
 
@@ -136,7 +136,7 @@ export class BitgetRouter implements DexRouter {
       if (!isBitgetResponseSuccess(response) || !response.data) {
         return createQuoteError(
           params,
-          normalizeError(response.msg) || ErrorMessages.QUOTE_FAILED
+          response.msg || "Bitget API error: Failed to get quote"
         );
       }
 
@@ -209,7 +209,7 @@ export class BitgetRouter implements DexRouter {
     } catch (error: any) {
       return createQuoteError(
         params,
-        normalizeError(error?.message) || ErrorMessages.QUOTE_FAILED
+        error?.message || "Bitget quote failed: Unknown error"
       );
     }
   }
@@ -217,17 +217,19 @@ export class BitgetRouter implements DexRouter {
   async executeSwap(params: ExecuteParams): Promise<ExecuteResult> {
     try {
       if (!requiresRecipientInExecute(params)) {
-        return createExecuteError(ErrorMessages.QUOTE_FAILED);
+        return createExecuteError("Bitget swap failed: Router requires recipient address");
       }
 
       const { quote, sender, receiveUser } = params;
 
       if (!quote.success) {
-        return createExecuteError(ErrorMessages.QUOTE_FAILED);
+        return createExecuteError(
+          quote.error || "Bitget swap failed: Invalid quote"
+        );
       }
 
       if (!receiveUser || receiveUser.trim() === "") {
-        return createExecuteError(ErrorMessages.QUOTE_FAILED);
+        return createExecuteError("Bitget swap failed: Recipient address is required");
       }
 
       let market: string;
@@ -236,14 +238,14 @@ export class BitgetRouter implements DexRouter {
           const routerMsg = JSON.parse(quote.routerMsg);
           market = routerMsg.market || "";
         } else {
-          return createExecuteError(ErrorMessages.QUOTE_FAILED);
+          return createExecuteError("Bitget swap failed: Missing router message data");
         }
       } catch (error) {
-        return createExecuteError(ErrorMessages.QUOTE_FAILED);
+        return createExecuteError("Bitget swap failed: Invalid router message format");
       }
 
       if (!market) {
-        return createExecuteError(ErrorMessages.QUOTE_FAILED);
+        return createExecuteError("Bitget swap failed: Market information is required");
       }
 
       const normalizedTokenIn = this.normalizeEvmAddress(
@@ -270,9 +272,8 @@ export class BitgetRouter implements DexRouter {
       });
 
       if (!isBitgetResponseSuccess(reQuoteResponse) || !reQuoteResponse.data) {
-        return createExecuteError(
-          normalizeError(reQuoteResponse.msg) || ErrorMessages.QUOTE_FAILED
-        );
+        const errorMsg = reQuoteResponse.msg || "Bitget re-quote failed: No data returned";
+        return createExecuteError(errorMsg);
       }
 
       market = reQuoteResponse.data?.market || market;
@@ -294,12 +295,14 @@ export class BitgetRouter implements DexRouter {
 
       if (!isBitgetResponseSuccess(swapResponse) || !swapResponse.data) {
         return createExecuteError(
-          normalizeError(swapResponse.msg) || ErrorMessages.QUOTE_FAILED
+          swapResponse.msg || "Bitget swap failed: No transaction data"
         );
       }
 
       if (swapResponse.data?.estimateRevert === true) {
-        return createExecuteError(ErrorMessages.QUOTE_FAILED);
+        return createExecuteError(
+          swapResponse.msg || "Bitget swap failed: Transaction would revert (slippage or price impact too high)"
+        );
       }
 
       let transactionData = swapResponse.data?.calldata || swapResponse.data?.data;
@@ -321,17 +324,21 @@ export class BitgetRouter implements DexRouter {
           : undefined);
 
       if (!to || !transactionData) {
-        return createExecuteError(ErrorMessages.QUOTE_FAILED);
+        return createExecuteError(
+          swapResponse.msg || "Bitget swap failed: Missing transaction data or recipient address"
+        );
       }
       
-      if (transactionData.length < 10 || !/^0x[0-9a-fA-F]+$/.test(transactionData)) {
-        return createExecuteError(ErrorMessages.QUOTE_FAILED);
+      if (transactionData.length < 10 || !/^0x[0-9a-fA-F]+$/.test(transactionData)) { 
+        return createExecuteError(
+          swapResponse.msg || "Bitget swap failed: Invalid transaction data format"
+        );
       }
 
       // Check balance and approval for ERC20 tokens
       if (normalizedTokenIn && normalizedTokenIn !== "") {
         if (!this.evmChainAdapter.getBalance) {
-          return createExecuteError(ErrorMessages.QUOTE_FAILED);
+          return createExecuteError("Bitget swap failed: Balance check not supported");
         }
         const tokenBalanceFormatted = await this.evmChainAdapter.getBalance({
           address: sender,
@@ -343,7 +350,7 @@ export class BitgetRouter implements DexRouter {
         const amountInBN = ethers.BigNumber.from(quote.amountIn);
         
         if (balanceBN.lt(amountInBN)) {
-          return createExecuteError(ErrorMessages.QUOTE_FAILED);
+          return createExecuteError("Bitget swap failed: Insufficient token balance");
         }
 
         const currentAllowance = await this.evmChainAdapter.getAllowance({
@@ -386,18 +393,18 @@ export class BitgetRouter implements DexRouter {
             }
             
             if (newAllowanceBN.lt(amountInBN)) {
-              return createExecuteError(ErrorMessages.QUOTE_FAILED);
+              return createExecuteError("Bitget swap failed: Token approval failed or insufficient");
             }
           } catch (error: any) {
             return createExecuteError(
-              normalizeError(error?.message) || ErrorMessages.QUOTE_FAILED
+              error?.message || "Bitget approval check failed"
             );
           }
         }
       } else {
         // Check native token balance (including gas)
         if (!this.evmChainAdapter.getBalance) {
-          return createExecuteError(ErrorMessages.QUOTE_FAILED);
+          return createExecuteError("Bitget swap failed: Balance check not supported");
         }
         const nativeBalanceFormatted = await this.evmChainAdapter.getBalance({
           address: sender,
@@ -425,7 +432,7 @@ export class BitgetRouter implements DexRouter {
         const totalRequired = amountInBN.add(gasCostEstimate);
         
         if (balanceBN.lt(totalRequired)) {
-          return createExecuteError(ErrorMessages.QUOTE_FAILED);
+          return createExecuteError("Bitget swap failed: Insufficient balance (including gas fee)");
         }
       }
 
@@ -439,7 +446,7 @@ export class BitgetRouter implements DexRouter {
         const amountInBN = ethers.BigNumber.from(quote.amountIn);
         
         if (finalAllowanceBN.lt(amountInBN)) {
-          return createExecuteError(ErrorMessages.QUOTE_FAILED);
+          return createExecuteError("Bitget swap failed: Insufficient token allowance");
         }
       }
 
@@ -466,11 +473,14 @@ export class BitgetRouter implements DexRouter {
             tokenOut: quote.tokenOut.symbol,
             rpcError: rpcEstimateError,
           });
-          return createExecuteError(ErrorMessages.QUOTE_FAILED);
+          const errorMsg = rpcEstimateError?.message || rpcEstimateError?.reason || "";
+          return createExecuteError(
+            errorMsg || "Bitget swap failed: Transaction would revert (slippage or price impact too high)"
+          );
         }
 
         if (!gas || gas === "0") {
-          return createExecuteError(ErrorMessages.QUOTE_FAILED);
+          return createExecuteError("Bitget swap failed: Invalid gas estimate from Bitget");
         }
 
         logger.warn("RPC gas estimation failed, using Bitget estimate", {
@@ -512,7 +522,7 @@ export class BitgetRouter implements DexRouter {
             feeData.maxFeePerGas.lte(0) || feeData.maxPriorityFeePerGas.lte(0)) {
           const cachedGasPrice = await getCachedGasPrice();
           if (!cachedGasPrice || cachedGasPrice.lte(0)) {
-            return createExecuteError(ErrorMessages.QUOTE_FAILED);
+            return createExecuteError("Bitget swap failed: Unable to get valid gas price");
           }
           feeData.maxFeePerGas = cachedGasPrice;
           feeData.maxPriorityFeePerGas = cachedGasPrice.div(10);
@@ -545,7 +555,7 @@ export class BitgetRouter implements DexRouter {
         } catch (error) {
           const cachedGasPrice = await getCachedGasPrice();
           if (!cachedGasPrice || cachedGasPrice.lte(0)) {
-            return createExecuteError(ErrorMessages.QUOTE_FAILED);
+            return createExecuteError("Bitget swap failed: Unable to get valid gas price");
           }
           feeData.gasPrice = cachedGasPrice;
         }
@@ -553,27 +563,27 @@ export class BitgetRouter implements DexRouter {
 
       // Final validation before building transaction
       if (!to || !ethers.utils.isAddress(to)) {
-        return createExecuteError(ErrorMessages.QUOTE_FAILED);
+        return createExecuteError("Bitget swap failed: Invalid recipient address");
       }
 
       if (!transactionData || transactionData.length < 10) {
-        return createExecuteError(ErrorMessages.QUOTE_FAILED);
+        return createExecuteError("Bitget swap failed: Invalid transaction data");
       }
 
       // Validate gas limit
       if (!estimatedGasLimit || estimatedGasLimit.lte(0)) {
-        return createExecuteError(ErrorMessages.QUOTE_FAILED);
+        return createExecuteError("Bitget swap failed: Invalid gas limit");
       }
 
       // Validate fee data based on chain type
       if (supportsEip1559) {
         if (!feeData.maxFeePerGas || !feeData.maxPriorityFeePerGas ||
             feeData.maxFeePerGas.lte(0) || feeData.maxPriorityFeePerGas.lte(0)) {
-          return createExecuteError(ErrorMessages.QUOTE_FAILED);
+          return createExecuteError("Bitget swap failed: Invalid gas fee data (EIP-1559)");
         }
       } else {
         if (!feeData.gasPrice || feeData.gasPrice.lte(0)) {
-          return createExecuteError(ErrorMessages.QUOTE_FAILED);
+          return createExecuteError("Bitget swap failed: Invalid gas price");
         }
       }
 

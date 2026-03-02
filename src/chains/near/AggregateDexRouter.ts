@@ -198,7 +198,7 @@ export class AggregateDexRouter implements DexRouter {
         amountOut: "0",
         minAmountOut: "0",
         routes: [],
-        error: normalizeError(error?.message) || ErrorMessages.QUOTE_FAILED,
+        error: error?.message || ErrorMessages.QUOTE_FAILED,
       };
     }
   }
@@ -375,7 +375,7 @@ export class AggregateDexRouter implements DexRouter {
       } catch (error: any) {
         return {
           success: false,
-          error: normalizeError(error?.message) || ErrorMessages.QUOTE_FAILED,
+          error: error?.message || ErrorMessages.QUOTE_FAILED,
         };
       }
 
@@ -641,7 +641,8 @@ export class AggregateDexRouter implements DexRouter {
       } catch (error: any) {
         return {
           success: false,
-          error: normalizeError(error?.message) || ErrorMessages.QUOTE_FAILED,
+          // ✅ 预交易阶段：保留原始错误信息，不简化
+        error: error?.message || ErrorMessages.QUOTE_FAILED,
         };
       }
 

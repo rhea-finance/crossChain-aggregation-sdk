@@ -164,17 +164,11 @@ export async function estimateGasLimit(
           reason: estimateError?.reason,
           message: estimateError?.message || String(estimateError),
         };
-        console.warn("RPC gas estimate failed:", {
-          error: estimateError?.message || String(estimateError),
-          code: estimateError?.code,
-          reason: estimateError?.reason,
-        });
+        // Silently fail
       }
     }
   } catch (error: any) {
-    console.warn("Gas estimation error:", {
-      error: error?.message || String(error),
-    });
+    // Silently fail
   }
 
   if (estimatedGasLimit && estimatedGasLimit.gt(0) && hasReliableEstimate) {
