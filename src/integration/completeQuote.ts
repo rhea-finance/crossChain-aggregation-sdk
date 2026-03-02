@@ -162,13 +162,11 @@ export async function completeQuote(
   async function quoteWithRetry(
     router: DexRouter,
     quoteParams: QuoteParams,
-    routerType: string,
-    routerName: string,
+    _routerType: string,
+    _routerName: string,
     maxRetries: number = 2,
     initialDelay: number = 1000
   ): Promise<QuoteResult | null> {
-    let lastError: any = null;
-    
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         const quote = await router.quote(quoteParams);
@@ -189,8 +187,6 @@ export async function completeQuote(
       const baseDelay = isRateLimit ? 2000 : initialDelay;
       const delay = baseDelay * Math.pow(2, attempt);
       await new Promise((resolve) => setTimeout(resolve, delay));
-        
-        lastError = quote;
       } catch (error: any) {
         const errorMessage = error?.message || String(error);
         const isRateLimit =
@@ -205,8 +201,6 @@ export async function completeQuote(
         const baseDelay = isRateLimit ? 2000 : initialDelay;
         const delay = baseDelay * Math.pow(2, attempt);
         await new Promise((resolve) => setTimeout(resolve, delay));
-        
-        lastError = error;
       }
     }
     
@@ -284,7 +278,7 @@ export async function completeQuote(
     preSwapQuote: QuoteResult;
   }> = [];
 
-  preSwapQuoteResults.forEach((result, index) => {
+  preSwapQuoteResults.forEach((result) => {
     if (result.status === "fulfilled" && result.value !== null) {
       validPreSwapQuotes.push(result.value);
     }

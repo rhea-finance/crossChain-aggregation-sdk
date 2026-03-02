@@ -1,4 +1,3 @@
-import Big from "big.js";
 import { ethers } from "ethers";
 import {
   QuoteParams,
@@ -363,13 +362,17 @@ export class OkxRouter implements DexRouter {
 
       let txData: any = null;
       if (Array.isArray(swapResponse.data) && swapResponse.data.length > 0) {
-        txData = swapResponse.data[0]?.tx || swapResponse.data[0];
-      } else if (swapResponse.data?.tx) {
-        txData = swapResponse.data.tx;
-      } else if (swapResponse.data?.transaction) {
-        txData = swapResponse.data.transaction;
-      } else {
-        txData = swapResponse.data;
+        const firstItem = swapResponse.data[0] as any;
+        txData = firstItem?.tx || firstItem;
+      } else if (swapResponse.data && !Array.isArray(swapResponse.data)) {
+        const data = swapResponse.data as any;
+        if (data.tx) {
+          txData = data.tx;
+        } else if (data.transaction) {
+          txData = data.transaction;
+        } else {
+          txData = data;
+        }
       }
 
       if (!txData) {
@@ -381,7 +384,10 @@ export class OkxRouter implements DexRouter {
         );
       }
 
-      if (swapResponse.data?.estimateRevert === true || txData?.estimateRevert === true) {
+      const dataObj = Array.isArray(swapResponse.data) 
+        ? (swapResponse.data[0] as any) 
+        : (swapResponse.data as any);
+      if (dataObj?.estimateRevert === true || txData?.estimateRevert === true) {
         logger.error("OKX swap: estimateRevert is true, transaction would fail", {
           swapResponse: swapResponse,
           txData,
@@ -411,9 +417,6 @@ export class OkxRouter implements DexRouter {
         txData.gasPrice ||
         okxEstimateGasFee ||
         undefined;
-
-      const functionSelector = transactionData?.substring(0, 10);
-      const isTransfer = functionSelector === "0xa9059cbb";
 
       if (!to || !transactionData) {
         logger.error("OKX swap response: missing to or transactionData", {

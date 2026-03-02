@@ -318,15 +318,46 @@ export interface OkxSwapResponse {
       value?: string; // native token value
       gas?: string;
       gasPrice?: string;
+      estimateRevert?: boolean;
+    };
+    tx?: string | {
+      data?: string;
+      to?: string;
+      value?: string;
+      gas?: string;
+      gasPrice?: string;
+      estimateRevert?: boolean;
+      [key: string]: any;
     };
     data?: string; // Alternative field name for calldata
     to?: string; // Alternative field name for contract
     value?: string;
     gas?: string;
+    gasPrice?: string;
     txHash?: string;
     explorerUrl?: string;
+    estimateRevert?: boolean;
     [key: string]: any;
-  };
+  } | Array<{
+    tx?: string | {
+      data?: string;
+      to?: string;
+      value?: string;
+      gas?: string;
+      gasPrice?: string;
+      estimateRevert?: boolean;
+      [key: string]: any;
+    };
+    transaction?: {
+      data?: string;
+      to?: string;
+      value?: string;
+      gas?: string;
+      gasPrice?: string;
+      estimateRevert?: boolean;
+    };
+    [key: string]: any;
+  }>;
 }
 
 /** Adapter for OKX DEX Aggregator API. */
