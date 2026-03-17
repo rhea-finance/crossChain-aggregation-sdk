@@ -459,7 +459,9 @@ export async function completeQuote(
             normalizedSourceAsset = sourceTokenConfig.assetId;
           } else {
             normalizedSourceAsset = normalizeTokenId(sourceToken.address, wrapNearContractId);
-            if (!normalizedSourceAsset.startsWith("nep141:")) {
+            if (normalizedSourceAsset === 'zec.omft.near' && sourceToken.chain === 'near') {
+              normalizedSourceAsset = '1cs_v1:near:nep141:zec.omft.near';
+            } else if (!normalizedSourceAsset.startsWith("nep141:")) {
               normalizedSourceAsset = `nep141:${normalizedSourceAsset}`;
             }
           }
