@@ -20,9 +20,11 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "type-check": "tsc --noEmit",
-    "lint": "eslint src --ext .ts",
-    "prepublishOnly": "npm run build"
+    "lint": "eslint src tests --ext .ts",
+    "prepublishOnly": "pnpm test && pnpm type-check && pnpm build"
   },
   "keywords": [
     "defi",
@@ -43,7 +45,8 @@
   },
   "dependencies": {
     "big.js": "^6.1.1",
-    "ethers": "5.7.2"
+    "ethers": "5.7.2",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/big.js": "^6.1.2",
@@ -52,7 +55,8 @@
     "@typescript-eslint/parser": "^7.0.0",
     "eslint": "^9.0.0",
     "tsup": "^8.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^4.1.10"
   },
   "peerDependencies": {
     "@near-js/providers": "*"
