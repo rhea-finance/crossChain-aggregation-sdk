@@ -1,7 +1,7 @@
 {
   "name": "@rhea-finance/cross-chain-aggregation-dex",
-  "version": "0.2.3",
-  "description": "TypeScript SDK for cross-chain DEX aggregation and routing on NEAR. Supports multi-DEX routing, automatic token registration, pre-swap handling, and NearIntents bridge integration for seamless cross-chain token swaps.",
+  "version": "1.0.0",
+  "description": "TypeScript SDK for a unified multi-chain Swap API with quote, transaction building, execution adapters, status, reporting, and history.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -10,6 +10,46 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
+    },
+    "./executors/evm": {
+      "types": "./dist/executors/evm.d.ts",
+      "import": "./dist/executors/evm.mjs",
+      "require": "./dist/executors/evm.js"
+    },
+    "./executors/solana": {
+      "types": "./dist/executors/solana.d.ts",
+      "import": "./dist/executors/solana.mjs",
+      "require": "./dist/executors/solana.js"
+    },
+    "./executors/aptos": {
+      "types": "./dist/executors/aptos.d.ts",
+      "import": "./dist/executors/aptos.mjs",
+      "require": "./dist/executors/aptos.js"
+    },
+    "./executors/near": {
+      "types": "./dist/executors/near.d.ts",
+      "import": "./dist/executors/near.mjs",
+      "require": "./dist/executors/near.js"
+    },
+    "./executors/tron": {
+      "types": "./dist/executors/tron.d.ts",
+      "import": "./dist/executors/tron.mjs",
+      "require": "./dist/executors/tron.js"
+    },
+    "./executors/bitcoin": {
+      "types": "./dist/executors/bitcoin.d.ts",
+      "import": "./dist/executors/bitcoin.mjs",
+      "require": "./dist/executors/bitcoin.js"
+    },
+    "./executors/zcash": {
+      "types": "./dist/executors/zcash.d.ts",
+      "import": "./dist/executors/zcash.mjs",
+      "require": "./dist/executors/zcash.js"
+    },
+    "./executors/sui": {
+      "types": "./dist/executors/sui.d.ts",
+      "import": "./dist/executors/sui.mjs",
+      "require": "./dist/executors/sui.js"
     }
   },
   "files": [
@@ -44,27 +84,16 @@
     "url": "https://github.com/rhea-finance/crossChain-aggregation-sdk.git"
   },
   "dependencies": {
-    "big.js": "^6.1.1",
-    "ethers": "5.7.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/big.js": "^6.1.2",
     "@types/node": "^20.0.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
-    "eslint": "^9.0.0",
+    "eslint": "^8.57.1",
     "tsup": "^8.0.0",
     "typescript": "^5.0.0",
     "vitest": "^4.1.10"
-  },
-  "peerDependencies": {
-    "@near-js/providers": "*"
-  },
-  "peerDependenciesMeta": {
-    "@near-js/providers": {
-      "optional": true
-    }
   },
   "engines": {
     "node": ">=16.0.0"

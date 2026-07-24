@@ -12,6 +12,8 @@ import type {
 } from "../types/quote";
 import { toApiAssetAddress, toApiChain } from "./chain";
 
+const DEFAULT_QUOTE_WAITING_TIME_MS = 3000;
+
 export function serializeQuoteRequest(
   request: QuoteRequest
 ): SwapQuoteRequestRaw {
@@ -25,6 +27,8 @@ export function serializeQuoteRequest(
     tokenOut: toApiAssetAddress(request.tokenOut),
     amountIn: request.amountIn,
     slippage: request.slippageBps,
+    quoteWaitingTimeMs:
+      request.quoteWaitingTimeMs ?? DEFAULT_QUOTE_WAITING_TIME_MS,
     sender: request.sender.trim(),
     ...(request.recipient?.trim()
       ? { recipient: request.recipient.trim() }
@@ -97,6 +101,18 @@ function validateQuoteRequest(request: QuoteRequest): void {
       "INVALID_REQUEST",
       "quote",
       "slippageBps cannot exceed 10000"
+    );
+  }
+  if (
+    request.quoteWaitingTimeMs !== undefined &&
+    (!Number.isFinite(request.quoteWaitingTimeMs) ||
+      !Number.isInteger(request.quoteWaitingTimeMs) ||
+      request.quoteWaitingTimeMs < 0)
+  ) {
+    throw new SwapSdkError(
+      "INVALID_REQUEST",
+      "quote",
+      "quoteWaitingTimeMs must be a non-negative integer"
     );
   }
   if (!request.sender.trim()) {

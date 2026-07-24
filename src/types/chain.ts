@@ -1,15 +1,14 @@
 import { SwapSdkError } from "../core/errors";
 
 export type ChainRef =
-  | `eip155:${number}`
-  | "solana:mainnet"
-  | "aptos:mainnet"
-  | "near:mainnet"
-  | "tron:mainnet"
-  | "bitcoin:mainnet"
-  | "zcash:mainnet"
-  | "sui:mainnet"
-  | (string & {});
+  | `${number}`
+  | "solana"
+  | "aptos"
+  | "near"
+  | "tron"
+  | "btc"
+  | "zcash"
+  | "sui";
 
 export type BaseUnitAmount = string;
 

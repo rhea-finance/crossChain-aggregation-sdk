@@ -11,6 +11,8 @@ export interface QuoteRequest {
   tokenOut: AssetRef;
   amountIn: BaseUnitAmount;
   slippageBps: number;
+  /** Near Intents quote waiting time in milliseconds. Defaults to 3000. */
+  quoteWaitingTimeMs?: number;
   sender: string;
   recipient?: string;
   extensions?: Record<string, unknown>;

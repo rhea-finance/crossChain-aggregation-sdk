@@ -1600,7 +1600,7 @@ Expected:
 Run:
 
 ```bash
-rg -n "Bearer ey|BEGIN PRIVATE KEY|mnemonic" src tests README.md
+rg -n "Bearer e[y]|BEGIN PRIVATE KE[Y]|mnemon[i]c" src tests README.md
 ```
 
 Expected: no credentials, private key material, or placeholders. Legitimate test descriptions containing the words must be renamed rather than suppressed.

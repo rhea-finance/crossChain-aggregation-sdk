@@ -1,74 +1,65 @@
 import { SwapSdkError } from "../core/errors";
 import type { AssetRef, ChainRef } from "../types/chain";
 
-const STANDARD_TO_API = new Map<ChainRef, string>([
-  ["solana:mainnet", "solana"],
-  ["aptos:mainnet", "aptos"],
-  ["near:mainnet", "near"],
-  ["tron:mainnet", "tron"],
-  ["bitcoin:mainnet", "btc"],
-  ["zcash:mainnet", "zcash"],
-  ["sui:mainnet", "sui"],
+const CANONICAL_NON_EVM_CHAINS = new Set<ChainRef>([
+  "solana",
+  "aptos",
+  "near",
+  "tron",
+  "btc",
+  "zcash",
+  "sui",
 ]);
 
-const API_TO_STANDARD = new Map<string, ChainRef>([
-  ["solana", "solana:mainnet"],
-  ["sol", "solana:mainnet"],
-  ["501", "solana:mainnet"],
-  ["aptos", "aptos:mainnet"],
-  ["637", "aptos:mainnet"],
-  ["near", "near:mainnet"],
-  ["tron", "tron:mainnet"],
-  ["trx", "tron:mainnet"],
-  ["btc", "bitcoin:mainnet"],
-  ["bitcoin", "bitcoin:mainnet"],
-  ["zcash", "zcash:mainnet"],
-  ["zec", "zcash:mainnet"],
-  ["sui", "sui:mainnet"],
+const RAW_API_ALIASES = new Map<string, ChainRef>([
+  ["sol", "solana"],
+  ["501", "solana"],
+  ["637", "aptos"],
+  ["trx", "tron"],
+  ["bitcoin", "btc"],
+  ["zec", "zcash"],
 ]);
 
 const NATIVE_ADDRESSES = new Map<ChainRef, string>([
-  ["solana:mainnet", "So11111111111111111111111111111111111111112"],
-  ["aptos:mainnet", "0xa"],
-  ["near:mainnet", "wrap.near"],
-  ["tron:mainnet", "trx"],
-  ["bitcoin:mainnet", "btc"],
-  ["zcash:mainnet", "nep141:zec.omft.near"],
-  ["sui:mainnet", "0x2::sui::SUI"],
+  ["solana", "So11111111111111111111111111111111111111112"],
+  ["aptos", "0xa"],
+  ["near", "wrap.near"],
+  ["tron", "trx"],
+  ["btc", "btc"],
+  ["zcash", "nep141:zec.omft.near"],
+  ["sui", "0x2::sui::SUI"],
 ]);
 
 const EVM_ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+const DECIMAL_EVM_CHAIN_ID = /^[1-9]\d*$/;
 
 export function toApiChain(chain: ChainRef): string {
-  const mapped = STANDARD_TO_API.get(chain);
-  if (mapped) return mapped;
-
-  const evmMatch = /^eip155:(\d+)$/.exec(chain);
-  if (evmMatch) {
-    const chainId = BigInt(evmMatch[1]);
-    if (chainId > 0n) return chainId.toString();
+  if (
+    DECIMAL_EVM_CHAIN_ID.test(chain) ||
+    CANONICAL_NON_EVM_CHAINS.has(chain)
+  ) {
+    return chain;
   }
-
-  throw new SwapSdkError(
-    "UNSUPPORTED_CHAIN",
-    "quote",
-    `Unsupported chain: ${chain}`
-  );
+  throw unsupportedChain(chain);
 }
 
 export function fromApiChain(chain: string): ChainRef {
   const normalized = chain.trim().toLowerCase();
-  const mapped = API_TO_STANDARD.get(normalized);
-  if (mapped) return mapped;
+  const alias = RAW_API_ALIASES.get(normalized);
+  if (alias) return alias;
+  if (CANONICAL_NON_EVM_CHAINS.has(normalized as ChainRef)) {
+    return normalized as ChainRef;
+  }
 
   if (/^0x[0-9a-f]+$/.test(normalized)) {
-    return `eip155:${BigInt(normalized).toString()}`;
+    const decimal = BigInt(normalized).toString();
+    if (decimal !== "0") return decimal as ChainRef;
   }
-  if (/^[1-9]\d*$/.test(normalized)) {
-    return `eip155:${BigInt(normalized).toString()}`;
+  if (DECIMAL_EVM_CHAIN_ID.test(normalized)) {
+    return BigInt(normalized).toString() as ChainRef;
   }
 
-  return normalized as ChainRef;
+  throw unsupportedChain(chain);
 }
 
 export function toApiAssetAddress(asset: AssetRef): string {
@@ -83,7 +74,7 @@ export function toApiAssetAddress(asset: AssetRef): string {
     );
   }
 
-  if (/^eip155:\d+$/.test(asset.chain)) return EVM_ZERO_ADDRESS;
+  if (DECIMAL_EVM_CHAIN_ID.test(asset.chain)) return EVM_ZERO_ADDRESS;
 
   const nativeAddress = NATIVE_ADDRESSES.get(asset.chain);
   if (!nativeAddress) {
@@ -94,4 +85,12 @@ export function toApiAssetAddress(asset: AssetRef): string {
     );
   }
   return nativeAddress;
+}
+
+function unsupportedChain(chain: string): SwapSdkError {
+  return new SwapSdkError(
+    "UNSUPPORTED_CHAIN",
+    "quote",
+    `Unsupported chain: ${chain}`
+  );
 }

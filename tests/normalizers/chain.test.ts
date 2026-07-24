@@ -7,25 +7,47 @@ import {
 
 describe("chain conversion", () => {
   it.each([
-    ["eip155:1", "1"],
-    ["near:mainnet", "near"],
-    ["solana:mainnet", "solana"],
-    ["aptos:mainnet", "aptos"],
-    ["tron:mainnet", "tron"],
-    ["bitcoin:mainnet", "btc"],
-    ["zcash:mainnet", "zcash"],
-    ["sui:mainnet", "sui"],
-  ] as const)("maps %s", (standard, api) => {
-    expect(toApiChain(standard)).toBe(api);
-    expect(fromApiChain(api)).toBe(standard);
+    "1",
+    "8453",
+    "near",
+    "solana",
+    "aptos",
+    "tron",
+    "btc",
+    "zcash",
+    "sui",
+  ] as const)("preserves canonical chain id %s", (chain) => {
+    expect(toApiChain(chain)).toBe(chain);
+    expect(fromApiChain(chain)).toBe(chain);
   });
 
-  it("normalizes hexadecimal EVM API chain ids", () => {
-    expect(fromApiChain("0x89")).toBe("eip155:137");
+  it("normalizes raw API aliases to canonical chain ids", () => {
+    expect(fromApiChain("0x2105")).toBe("8453");
+    expect(fromApiChain("sol")).toBe("solana");
+    expect(fromApiChain("501")).toBe("solana");
+    expect(fromApiChain("bitcoin")).toBe("btc");
+    expect(fromApiChain("trx")).toBe("tron");
+    expect(fromApiChain("zec")).toBe("zcash");
   });
 
-  it("rejects unsupported standard chains", () => {
-    expect(() => toApiChain("cosmos:cosmoshub-4")).toThrowError(
+  it.each([
+    "eip155:8453",
+    "solana:mainnet",
+    "0",
+    "01",
+    " 1",
+    "+1",
+    "-1",
+    "1.5",
+    "1e3",
+  ])("rejects non-canonical public chain id %s", (chain) => {
+    expect(() => toApiChain(chain as never)).toThrowError(
+      expect.objectContaining({ code: "UNSUPPORTED_CHAIN" })
+    );
+  });
+
+  it("rejects unsupported raw API chains", () => {
+    expect(() => fromApiChain("cosmos:cosmoshub-4")).toThrowError(
       expect.objectContaining({ code: "UNSUPPORTED_CHAIN" })
     );
   });
@@ -33,7 +55,7 @@ describe("chain conversion", () => {
   it("uses the canonical native placeholder for an empty native asset", () => {
     expect(
       toApiAssetAddress({
-        chain: "bitcoin:mainnet",
+        chain: "btc",
         address: "",
         isNative: true,
       })
@@ -43,9 +65,19 @@ describe("chain conversion", () => {
   it("preserves explicit asset addresses", () => {
     expect(
       toApiAssetAddress({
-        chain: "near:mainnet",
+        chain: "near",
         address: "token.near",
       })
     ).toBe("token.near");
+  });
+
+  it("uses the EVM zero address for an empty native asset", () => {
+    expect(
+      toApiAssetAddress({
+        chain: "8453",
+        address: "",
+        isNative: true,
+      })
+    ).toBe("0x0000000000000000000000000000000000000000");
   });
 });

@@ -39,3 +39,7 @@ coverage/
 .temp/
 .tmp/
 .worktrees/
+.pnpm-store/
+.github/
+.doc
+

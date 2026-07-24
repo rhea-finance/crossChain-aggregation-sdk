@@ -1,14 +1,21 @@
-/** Public entry: re-export types/adapters/utils/routers/integration. */
-export * from "./types";
-export * from "./adapters/types";
-
-export * from "./utils";
-
-export * from "./chains/near/NearSmartRouter";
-export * from "./chains/near/AggregateDexRouter";
-
-export * from "./chains/evm/BitgetRouter";
-export * from "./chains/evm/OkxRouter";
-
-export * from "./integration/completeQuote";
-export * from "./integration/quoteSameChainSwap";
+export * from "./api/ApiClient";
+export * from "./api/rawTypes";
+export * from "./client/SwapClient";
+export * from "./core/errors";
+export * from "./core/lifecycle";
+export * from "./core/logger";
+export * from "./core/registry";
+export * from "./normalizers/build";
+export * from "./normalizers/chain";
+export * from "./normalizers/history";
+export * from "./normalizers/quote";
+export * from "./mca/collateral";
+export * from "./mca/quote";
+export * from "./mca/signers";
+export * from "./mca/types";
+export * from "./mca/withdraw";
+export * from "./types/chain";
+export * from "./types/execution";
+export * from "./types/history";
+export * from "./types/quote";
+export * from "./utils/units";

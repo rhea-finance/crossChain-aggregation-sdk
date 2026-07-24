@@ -10,6 +10,39 @@ export interface SwapApiTokenMetaRaw {
   decimals: number;
 }
 
+export interface SwapMcaSignerPayloadRaw {
+  chain: string;
+  identityKey: string;
+}
+
+export interface SwapMcaPayloadRaw {
+  flow?: "deposit" | "withdraw";
+  mcaFlow?: "deposit" | "withdraw";
+  mcaAccountId?: string;
+  mca_id?: string;
+  signer?: SwapMcaSignerPayloadRaw;
+  depositSigner?: SwapMcaSignerPayloadRaw;
+  amountBurrow?: string;
+  amount_with_inner_decimal?: string;
+  amount_burrow?: string;
+  recipientMsgSignatures?: string[];
+  depositSignerProofSignatures?: string[];
+  useAsCollateral?: boolean;
+  needDecreaseCollateral?: boolean;
+  decreaseCollateralAmountBurrow?: string;
+  withdrawAll?: boolean;
+  [key: string]: unknown;
+}
+
+export interface SwapMcaRelayerRequestRaw {
+  mcaAccountId?: string;
+  mca_id?: string;
+  wallet: string | Record<string, unknown>;
+  business: Record<string, unknown>;
+  signature: string;
+  [key: string]: unknown;
+}
+
 export interface SwapQuoteRequestRaw {
   fromChain: string;
   toChain: string;
@@ -17,10 +50,11 @@ export interface SwapQuoteRequestRaw {
   tokenOut: string;
   amountIn: string;
   slippage?: number;
+  quoteWaitingTimeMs?: number;
   sender: string;
   recipient?: string;
   useAsCollateral?: boolean;
-  mca?: Record<string, unknown>;
+  mca?: SwapMcaPayloadRaw;
 }
 
 export interface SwapQuoteDataRaw {
@@ -47,7 +81,7 @@ export interface SwapBuildRequestRaw extends SwapQuoteRequestRaw {
   preSwap: unknown | null;
   bridge: unknown | null;
   nearMcaWithdrawTx?: unknown;
-  mcaRelayer?: Record<string, unknown>;
+  mcaRelayer?: SwapMcaRelayerRequestRaw;
   deposit_address?: string;
   is_cross_chain?: boolean;
   tx_type?: string;

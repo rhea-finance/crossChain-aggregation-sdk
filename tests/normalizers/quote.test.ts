@@ -7,17 +7,17 @@ import {
 import type { QuoteRequest } from "../../src/types/quote";
 
 const request: QuoteRequest = {
-  fromChain: "eip155:1",
-  toChain: "near:mainnet",
+  fromChain: "1",
+  toChain: "near",
   tokenIn: {
-    chain: "eip155:1",
+    chain: "1",
     address: "0x0000000000000000000000000000000000000000",
     symbol: "ETH",
     decimals: 18,
     isNative: true,
   },
   tokenOut: {
-    chain: "near:mainnet",
+    chain: "near",
     address: "wrap.near",
     symbol: "wNEAR",
     decimals: 24,
@@ -58,18 +58,47 @@ describe("quote normalization", () => {
       tokenOut: "wrap.near",
       amountIn: "100",
       slippage: 50,
+      quoteWaitingTimeMs: 3000,
       sender: "0xsender",
       recipient: "receiver.near",
     });
   });
+
+  it("preserves a custom quote waiting time", () => {
+    expect(
+      serializeQuoteRequest({
+        ...request,
+        quoteWaitingTimeMs: 5000,
+      })
+    ).toMatchObject({
+      quoteWaitingTimeMs: 5000,
+    });
+  });
+
+  it.each([-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects invalid quote waiting time %s",
+    (quoteWaitingTimeMs) => {
+      expect(() =>
+        serializeQuoteRequest({
+          ...request,
+          quoteWaitingTimeMs,
+        })
+      ).toThrowError(
+        expect.objectContaining({
+          code: "INVALID_REQUEST",
+          stage: "quote",
+        })
+      );
+    }
+  );
 
   it("normalizes the best route and preserves immutable build context", () => {
     const quote = normalizeQuote(request, raw, 1_000);
 
     expect(quote).toMatchObject({
       id: "quote-1",
-      fromChain: "eip155:1",
-      toChain: "near:mainnet",
+      fromChain: "1",
+      toChain: "near",
       amountIn: "100",
       estimatedOut: "90",
       minAmountOut: "89",
@@ -106,4 +135,22 @@ describe("quote normalization", () => {
       })
     ).toThrowError(expect.objectContaining({ code: "INVALID_API_RESPONSE" }));
   });
+
+  it.each(["eip155:1", "near:mainnet"])(
+    "rejects legacy public chain id %s",
+    (chain) => {
+      expect(() =>
+        serializeQuoteRequest({
+          ...request,
+          fromChain: chain as never,
+          tokenIn: { ...request.tokenIn, chain: chain as never },
+        })
+      ).toThrowError(
+        expect.objectContaining({
+          code: "UNSUPPORTED_CHAIN",
+          stage: "quote",
+        })
+      );
+    }
+  );
 });
