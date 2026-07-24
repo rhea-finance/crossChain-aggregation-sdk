@@ -68,6 +68,8 @@ const result = await clientWithExecutor.executeSwap({
 });
 ```
 
+
+
 ### Executor adapters
 
 Each executor is imported from its own subpath and accepts a wallet-neutral adapter. The application decides whether that adapter wraps a browser wallet, server signer, RPC service, or HSM.
@@ -134,8 +136,6 @@ Zcash adapters may return `{ requiresUserAction: true }` for legacy wallets that
 ## MCA swaps
 
 MCA deposit and withdrawal are execution modes of the unified root API. Use the same `client.quote()`, `client.buildSwap()`, `client.swap()`, `client.report()`, and `client.getHistory()` methods as a regular swap. The SDK does not create MCA accounts or query lending positions.
-
-HTTP endpoint、请求/响应 JSON 和 curl 示例见 [MCA Swap HTTP API 文档](docs/MCA_SWAP_HTTP_API.md)。SDK 调用方式见 [MCA Swap SDK 文档](docs/MCA_SWAP_API.md)。
 
 ### Deposit into an MCA
 
@@ -290,6 +290,8 @@ Raw methods preserve the unified API `data` shape:
 - `reportRaw()`
 - `getHistoryRaw()`
 
+
+
 ## Execution kinds
 
 Build responses are validated and represented as a discriminated union:
@@ -313,6 +315,8 @@ The SDK core defines the executor contract and registry. Wallet-specific impleme
 - Supply credentials with `apiKey` or `getAccessToken`; when both are present, `getAccessToken` takes precedence.
 - The package contains no fixed API credential and never manages private keys or wallet recovery phrases.
 - Use `AbortSignal` on network, build, execute, and polling calls when cancellation is required.
+
+
 
 ## Retry and logging
 
