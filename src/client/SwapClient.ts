@@ -242,24 +242,17 @@ export class SwapClient {
         raw: chainResult.raw ?? build.raw,
       };
 
-      if (chainResult.status === "requires-user-action") {
+      emit({
+        type: "submitted",
+        executionId: build.executionId,
+        ...(chainResult.txHash ? { txHash: chainResult.txHash } : {}),
+        ...(orderId ? { orderId } : {}),
+      });
+      if (chainResult.status === "source-confirmed") {
         emit({
-          type: "requires-user-action",
+          type: "source-confirmed",
           executionId: build.executionId,
         });
-      } else {
-        emit({
-          type: "submitted",
-          executionId: build.executionId,
-          ...(chainResult.txHash ? { txHash: chainResult.txHash } : {}),
-          ...(orderId ? { orderId } : {}),
-        });
-        if (chainResult.status === "source-confirmed") {
-          emit({
-            type: "source-confirmed",
-            executionId: build.executionId,
-          });
-        }
       }
 
       const reportRequest = this.createReportRequest(build, result);

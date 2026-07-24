@@ -7,7 +7,7 @@ import type {
 import type { SwapExecution } from "../types/execution";
 
 export interface ChainExecutionResult {
-  status: "submitted" | "source-confirmed" | "requires-user-action";
+  status: "submitted" | "source-confirmed";
   txHash?: string;
   txHashes?: string[];
   orderId?: string;

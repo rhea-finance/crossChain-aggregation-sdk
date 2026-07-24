@@ -15,12 +15,6 @@ export interface TransactionSubmission {
   raw?: unknown;
 }
 
-export interface TransferSubmission {
-  txHash?: string;
-  requiresUserAction?: boolean;
-  raw?: unknown;
-}
-
 export interface ExecutorErrorAdapter {
   isUserRejection?(error: unknown): boolean;
   /** Identity serialized as `mca.signer.identityKey` for MCA quotes. */

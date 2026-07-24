@@ -12,7 +12,7 @@ import {
   requestSignApproval,
   throwIfAborted,
   type ExecutorErrorAdapter,
-  type TransferSubmission,
+  type TransactionSubmission,
 } from "../shared";
 
 export interface ZcashWalletAdapter extends ExecutorErrorAdapter {
@@ -23,7 +23,7 @@ export interface ZcashWalletAdapter extends ExecutorErrorAdapter {
     depositAddress: string;
     decimals?: number;
     signal?: AbortSignal;
-  }): Promise<TransferSubmission>;
+  }): Promise<TransactionSubmission>;
   waitForTransaction?(
     txHash: string,
     options: { signal?: AbortSignal }
@@ -55,7 +55,7 @@ export function createZcashExecutor(
         depositAddress: execution.depositAddress,
         decimals: execution.decimals,
       });
-      let submission: TransferSubmission;
+      let submission: TransactionSubmission;
       try {
         submission = await adapter.sendTransfer({
           amount: execution.amount,
@@ -74,17 +74,11 @@ export function createZcashExecutor(
           "Failed to submit Zcash transfer"
         );
       }
-      if (submission.requiresUserAction) {
-        return {
-          status: "requires-user-action",
-          ...(submission.raw !== undefined ? { raw: submission.raw } : {}),
-        };
-      }
-      if (!submission.txHash) {
+      if (!submission.txHash?.trim()) {
         throw new SwapSdkError(
           "BROADCAST_FAILED",
           "broadcast",
-          "Zcash wallet returned neither a transaction hash nor user action"
+          "Zcash wallet returned no transaction hash"
         );
       }
       return confirm(adapter, submission.txHash, submission.raw, context);

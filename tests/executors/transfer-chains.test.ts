@@ -150,25 +150,68 @@ describe("createBitcoinExecutor", () => {
 });
 
 describe("createZcashExecutor", () => {
-  it("returns requires-user-action without inventing a transaction hash", async () => {
-    const adapter: ZcashWalletAdapter = {
+  const execution: Extract<SwapExecution, { kind: "zcash-transfer" }> = {
+    kind: "zcash-transfer",
+    chain: "zcash",
+    amount: "1000",
+    depositAddress: "t1receiver",
+    decimals: 8,
+  };
+
+  function adapter(
+    overrides: Partial<ZcashWalletAdapter> = {}
+  ): ZcashWalletAdapter {
+    return {
       getChain: () => "zcash",
       isAddress: (address) => address.startsWith("t1"),
-      sendTransfer: vi.fn(async () => ({ requiresUserAction: true })),
+      sendTransfer: vi.fn(async () => ({ txHash: "zcash-hash" })),
+      ...overrides,
     };
-    const executor = createZcashExecutor(adapter);
-    const execution: Extract<SwapExecution, { kind: "zcash-transfer" }> = {
-      kind: "zcash-transfer",
-      chain: "zcash",
-      amount: "1000",
-      depositAddress: "t1receiver",
-      decimals: 8,
-    };
+  }
 
+  it("returns a submitted Zcash transaction hash", async () => {
+    const executor = createZcashExecutor(adapter());
     await executor.validate(execution, context());
     const result = await executor.execute(execution, context());
-    expect(result).toEqual({ status: "requires-user-action" });
-    expect(result).not.toHaveProperty("txHash");
+
+    expect(result).toMatchObject({
+      status: "submitted",
+      txHash: "zcash-hash",
+    });
+  });
+
+  it("confirms a Zcash transaction when requested", async () => {
+    const wallet = adapter({
+      waitForTransaction: vi.fn(async () => ({ confirmed: true })),
+    });
+    const executor = createZcashExecutor(wallet);
+
+    await expect(
+      executor.execute(
+        execution,
+        context({ waitFor: "source-confirmed" })
+      )
+    ).resolves.toMatchObject({
+      status: "source-confirmed",
+      txHash: "zcash-hash",
+      raw: { confirmed: true },
+    });
+  });
+
+  it("rejects a Zcash response without a transaction hash", async () => {
+    const wallet = adapter({
+      sendTransfer: vi.fn(async () =>
+        ({}) as unknown as { txHash: string }
+      ),
+    });
+    const executor = createZcashExecutor(wallet);
+
+    await expect(
+      executor.execute(execution, context())
+    ).rejects.toMatchObject({
+      code: "BROADCAST_FAILED",
+      stage: "broadcast",
+    });
   });
 });
 

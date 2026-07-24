@@ -44,7 +44,6 @@ export type SwapLifecycleEvent =
   | { type: "source-confirmed"; executionId: string }
   | { type: "order-status"; executionId: string; status: OrderStatus }
   | { type: "completed"; executionId: string }
-  | { type: "requires-user-action"; executionId: string }
   | { type: "warning"; executionId: string; warning: SwapWarning }
   | { type: "failed"; executionId: string; error: Error };
 
@@ -57,8 +56,7 @@ export interface SwapExecutionResult {
     | "completed"
     | "failed"
     | "refunded"
-    | "expired"
-    | "requires-user-action";
+    | "expired";
   router: string;
   txHash?: string;
   txHashes?: string[];
