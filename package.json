@@ -1,6 +1,6 @@
 {
   "name": "@rhea-finance/cross-chain-aggregation-dex",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "TypeScript SDK for a unified multi-chain Swap API with quote, transaction building, execution adapters, status, reporting, and history.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -62,6 +62,7 @@
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:live-shapes": "tsx scripts/validate-live-shapes.ts",
     "type-check": "tsc --noEmit",
     "lint": "eslint src tests --ext .ts",
     "prepublishOnly": "pnpm test && pnpm type-check && pnpm build"
@@ -92,7 +93,9 @@
     "@typescript-eslint/parser": "^7.0.0",
     "eslint": "^8.57.1",
     "tsup": "^8.0.0",
+    "tsx": "4.23.1",
     "typescript": "^5.0.0",
+    "undici": "^6.27.0",
     "vitest": "^4.1.10"
   },
   "engines": {

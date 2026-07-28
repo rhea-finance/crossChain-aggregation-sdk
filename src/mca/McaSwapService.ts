@@ -161,6 +161,7 @@ export class McaSwapService {
         input.waitFor === "completed"
           ? "source-confirmed"
           : input.waitFor,
+      orderPolling: input.orderPolling,
       signal: input.signal,
       onEvent: input.onEvent,
     });
@@ -171,6 +172,7 @@ export class McaSwapService {
       const status = await this.client.waitForOrder({
         orderId: nearStatusKey!,
         router: input.quote.route.router,
+        ...input.orderPolling,
         signal: input.signal,
       });
       this.emitEvent(
@@ -442,6 +444,7 @@ export class McaSwapService {
         const status = await this.client.waitForOrder({
           orderId,
           router,
+          ...input.orderPolling,
           signal: input.signal,
         });
         emit({ type: "order-status", executionId, status: status.status });

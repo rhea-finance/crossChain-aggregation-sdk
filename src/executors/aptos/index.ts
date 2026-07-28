@@ -5,12 +5,14 @@ import type {
 } from "../../core/registry";
 import type { ChainRef } from "../../types/chain";
 import {
+  assertTransactionConfirmed,
   assertChain,
   exposeExecutorSigner,
   mapExecutorError,
   requestSignApproval,
   throwIfAborted,
   type ExecutorErrorAdapter,
+  type TransactionConfirmation,
   type TransactionSubmission,
 } from "../shared";
 
@@ -24,10 +26,10 @@ export interface AptosWalletAdapter extends ExecutorErrorAdapter {
     },
     options: { signal?: AbortSignal }
   ): Promise<TransactionSubmission>;
-  waitForTransaction?(
+  waitForTransaction(
     txHash: string,
     options: { signal?: AbortSignal }
-  ): Promise<unknown>;
+  ): Promise<TransactionConfirmation>;
 }
 
 export function createAptosExecutor(
@@ -77,7 +79,7 @@ async function confirm(
   submission: TransactionSubmission,
   context: ExecutionContext
 ): Promise<ChainExecutionResult> {
-  if (context.waitFor === "submitted" || !adapter.waitForTransaction) {
+  if (context.waitFor === "submitted") {
     return {
       status: "submitted",
       txHash: submission.txHash,
@@ -88,10 +90,15 @@ async function confirm(
     const confirmation = await adapter.waitForTransaction(submission.txHash, {
       signal: context.signal,
     });
+    const confirmationRaw = assertTransactionConfirmed(confirmation, {
+      code: "BROADCAST_FAILED",
+      stage: "broadcast",
+      message: "Aptos transaction failed",
+    });
     return {
       status: "source-confirmed",
       txHash: submission.txHash,
-      raw: confirmation ?? submission.raw,
+      raw: confirmationRaw ?? submission.raw,
     };
   } catch (error) {
     throw mapExecutorError(

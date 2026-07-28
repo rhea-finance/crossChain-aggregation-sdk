@@ -15,9 +15,9 @@ import type {
 import { fromApiChain } from "./chain";
 import {
   decimalStringSchema,
+  evmChainIdSchema,
   evmTxSchema,
   nonEmptyStringSchema,
-  positiveIntegerSchema,
 } from "./schemas";
 
 const tokenSchema = z.object({
@@ -43,7 +43,7 @@ const signingRequestSchema = z.object({
   type: nonEmptyStringSchema,
   router: nonEmptyStringSchema,
   quoteId: nonEmptyStringSchema,
-  chainId: positiveIntegerSchema,
+  chainId: evmChainIdSchema,
   signingScheme: z.string().optional(),
   typedData: z.object({
     domain: z.record(z.string(), z.unknown()),
@@ -307,10 +307,25 @@ function normalizeEvmApproval(
     assertEvmChainId(chain, approveTx.chainId);
     return {
       tx: approveTx,
-      spender: nonEmptyStringSchema.parse(raw.approve.spender),
+      spender:
+        readErc20ApproveSpender(approveTx.data) ??
+        nonEmptyStringSchema.parse(raw.approve.spender),
     };
   }
   return undefined;
+}
+
+function readErc20ApproveSpender(data: string): string | undefined {
+  const normalized = data.toLowerCase();
+  if (
+    !normalized.startsWith("0x095ea7b3") ||
+    normalized.length < 10 + 64
+  ) {
+    return undefined;
+  }
+  const addressWord = normalized.slice(10, 10 + 64);
+  if (!/^[0-9a-f]{64}$/.test(addressWord)) return undefined;
+  return `0x${addressWord.slice(24)}`;
 }
 
 function laneFromChainType(
@@ -331,7 +346,9 @@ function laneFromChainType(
     zec: "zcash",
     sui: "sui",
   };
-  if (normalized === "cross-chain") return laneFromChain(fromChain);
+  if (normalized === "cross-chain" || normalized === "utxo") {
+    return laneFromChain(fromChain);
+  }
   const lane = aliases[normalized];
   if (!lane) {
     throw new SwapSdkError(

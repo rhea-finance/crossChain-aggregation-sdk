@@ -5,6 +5,7 @@ export * from "./core/errors";
 export * from "./core/lifecycle";
 export * from "./core/logger";
 export * from "./core/registry";
+export type { TransactionConfirmation } from "./executors/shared";
 export * from "./normalizers/build";
 export * from "./normalizers/chain";
 export * from "./normalizers/history";

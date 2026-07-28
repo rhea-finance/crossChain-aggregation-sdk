@@ -10,12 +10,14 @@ import type {
   SwapExecution,
 } from "../../types/execution";
 import {
+  assertTransactionConfirmed,
   assertChain,
   exposeExecutorSigner,
   mapExecutorError,
   requestSignApproval,
   throwIfAborted,
   type ExecutorErrorAdapter,
+  type TransactionConfirmation,
   type TransactionSubmission,
 } from "../shared";
 
@@ -33,10 +35,10 @@ export interface SolanaWalletAdapter extends ExecutorErrorAdapter {
     metadata?: SolanaMetadata;
     signal?: AbortSignal;
   }): Promise<TransactionSubmission>;
-  waitForTransaction?(
+  waitForTransaction(
     txHash: string,
     input: { metadata?: SolanaMetadata; signal?: AbortSignal }
-  ): Promise<unknown>;
+  ): Promise<TransactionConfirmation>;
 }
 
 export function createSolanaExecutor(
@@ -97,7 +99,7 @@ async function confirm(
   submission: TransactionSubmission,
   context: ExecutionContext
 ): Promise<ChainExecutionResult> {
-  if (context.waitFor === "submitted" || !adapter.waitForTransaction) {
+  if (context.waitFor === "submitted") {
     return {
       status: "submitted",
       txHash: submission.txHash,
@@ -109,10 +111,15 @@ async function confirm(
       ...(execution.metadata ? { metadata: execution.metadata } : {}),
       signal: context.signal,
     });
+    const confirmationRaw = assertTransactionConfirmed(confirmation, {
+      code: "BROADCAST_FAILED",
+      stage: "broadcast",
+      message: "Solana transaction failed",
+    });
     return {
       status: "source-confirmed",
       txHash: submission.txHash,
-      raw: confirmation ?? submission.raw,
+      raw: confirmationRaw ?? submission.raw,
     };
   } catch (error) {
     throw mapExecutorError(

@@ -9,7 +9,11 @@ export interface EvmTx {
   to: string;
   data: string;
   value: BaseUnitAmount;
-  gasLimit: BaseUnitAmount;
+  gasLimit?: BaseUnitAmount;
+  gasPrice?: BaseUnitAmount;
+  maxFeePerGas?: BaseUnitAmount;
+  maxPriorityFeePerGas?: BaseUnitAmount;
+  from?: string;
   chainId: number;
 }
 
@@ -18,7 +22,10 @@ export interface EvmApproval {
   spender: string;
 }
 
-export type EvmSigningRequest = SwapSigningRequestRaw;
+export interface EvmSigningRequest
+  extends Omit<SwapSigningRequestRaw, "chainId"> {
+  chainId: number;
+}
 
 export interface SolanaMetadata {
   addressLookupTableAddresses?: string[];

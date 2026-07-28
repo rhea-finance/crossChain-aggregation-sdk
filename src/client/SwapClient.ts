@@ -279,6 +279,7 @@ export class SwapClient {
           orderId,
           router: orderRouter ?? build.router,
           chainId: orderChainId,
+          ...input.orderPolling,
           signal: input.signal,
         });
         result.status =
@@ -317,6 +318,7 @@ export class SwapClient {
     return this.executeSwap({
       build,
       waitFor: regularInput.waitFor,
+      orderPolling: regularInput.orderPolling,
       signal: regularInput.signal,
       onEvent: regularInput.onEvent,
       beforeSign: regularInput.beforeSign,
@@ -349,8 +351,9 @@ export class SwapClient {
 
   async waitForOrder(input: WaitForOrderInput): Promise<OrderStatusResult> {
     const intervalMs = input.intervalMs ?? 5_000;
-    const timeoutMs = input.timeoutMs ?? 250_000;
-    const startedAt = this.now();
+    const timeoutMs = input.timeoutMs;
+    const startedAt =
+      timeoutMs === undefined ? undefined : this.now();
 
     for (;;) {
       if (input.signal?.aborted) {
@@ -369,7 +372,11 @@ export class SwapClient {
       ) {
         return result;
       }
-      if (this.now() - startedAt >= timeoutMs) {
+      if (
+        timeoutMs !== undefined &&
+        startedAt !== undefined &&
+        this.now() - startedAt >= timeoutMs
+      ) {
         throw new SwapSdkError(
           "ORDER_TIMEOUT",
           "status",

@@ -14,39 +14,47 @@ describe("built-in executor signer chains", () => {
       createEvmExecutor({
         sendTransaction: async () => ({ txHash: "evm" }),
         signTypedData: async () => "signature",
+        waitForTransaction: async () => ({ status: "confirmed" }),
       }),
       createSolanaExecutor({
         getChain: () => "solana",
         signAndSendTransaction: async () => ({ txHash: "solana" }),
+        waitForTransaction: async () => ({ status: "confirmed" }),
       }),
       createAptosExecutor({
         getChain: () => "aptos",
         signAndSubmitTransaction: async () => ({ txHash: "aptos" }),
+        waitForTransaction: async () => ({ status: "confirmed" }),
       }),
       createNearExecutor({
         getChain: () => "near",
         signAndSendTransactions: async () => ({ txHashes: ["near"] }),
+        waitForTransactions: async () => ({ status: "confirmed" }),
       }),
       createTronExecutor({
         getChain: () => "tron",
         isAddress: () => true,
         sendNativeTransfer: async () => ({ txHash: "tron-native" }),
         sendTokenTransfer: async () => ({ txHash: "tron-token" }),
+        waitForTransaction: async () => ({ status: "confirmed" }),
       }),
       createBitcoinExecutor({
         getChain: () => "btc",
         isAddress: () => true,
         sendTransfer: async () => ({ txHash: "btc" }),
+        waitForTransaction: async () => ({ status: "confirmed" }),
       }),
       createZcashExecutor({
         getChain: () => "zcash",
         isAddress: () => true,
         sendTransfer: async () => ({ txHash: "zcash" }),
+        waitForTransaction: async () => ({ status: "confirmed" }),
       }),
       createSuiExecutor({
         getChain: () => "sui",
         isAddress: () => true,
         transferCoin: async () => ({ txHash: "sui" }),
+        waitForTransaction: async () => ({ status: "confirmed" }),
       }),
     ];
 

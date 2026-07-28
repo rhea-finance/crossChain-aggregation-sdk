@@ -4,6 +4,7 @@ import {
   createEvmExecutor,
   type EvmWalletAdapter,
 } from "../../src/executors/evm";
+import type { TransactionConfirmation } from "../../src/executors/shared";
 import type { SwapExecution } from "../../src/types/execution";
 
 function context(
@@ -35,6 +36,7 @@ function wallet(
   return {
     sendTransaction: vi.fn(async () => ({ txHash: "0xswap" })),
     signTypedData: vi.fn(async () => "0xsignature"),
+    waitForTransaction: vi.fn(async () => ({ status: "confirmed" })),
     ...overrides,
   };
 }
@@ -213,11 +215,19 @@ describe("createEvmExecutor", () => {
     await executor.execute(execution, context());
 
     expect(calls).toEqual(["approve", "sign"]);
-    expect(adapter.waitForTransaction).toBeUndefined();
+    expect(adapter.waitForTransaction).toHaveBeenCalledWith(
+      "0xapprove",
+      expect.objectContaining({ signal: undefined })
+    );
   });
 
   it("waits for confirmation when requested", async () => {
-    const adapter = wallet({ waitForTransaction: vi.fn(async () => ({ ok: true })) });
+    const adapter = wallet({
+      waitForTransaction: vi.fn(async () => ({
+        status: "confirmed",
+        raw: { ok: true },
+      })),
+    });
     const executor = createEvmExecutor(adapter);
 
     await expect(
@@ -227,6 +237,67 @@ describe("createEvmExecutor", () => {
       "0xswap",
       expect.objectContaining({ signal: undefined })
     );
+  });
+
+  it("rejects a failed source-chain confirmation", async () => {
+    const adapter = wallet({
+      waitForTransaction: vi.fn(async () => ({
+        status: "failed",
+        raw: { status: 0 },
+      })),
+    });
+    const executor = createEvmExecutor(adapter);
+
+    await expect(
+      executor.execute(txExecution, context({ waitFor: "source-confirmed" }))
+    ).rejects.toMatchObject({
+      code: "BROADCAST_FAILED",
+      stage: "broadcast",
+      details: { confirmationStatus: "failed" },
+    });
+  });
+
+  it("rejects a malformed source-chain confirmation status", async () => {
+    const adapter = wallet({
+      waitForTransaction: vi.fn(async () =>
+        ({ status: "success" }) as unknown as TransactionConfirmation
+      ),
+    });
+    const executor = createEvmExecutor(adapter);
+
+    await expect(
+      executor.execute(txExecution, context({ waitFor: "source-confirmed" }))
+    ).rejects.toMatchObject({
+      code: "BROADCAST_FAILED",
+      stage: "broadcast",
+      details: { confirmationStatus: "success" },
+    });
+  });
+
+  it("rejects a failed approval confirmation", async () => {
+    const adapter = wallet({
+      isApprovalRequired: async () => true,
+      waitForTransaction: vi.fn(async () => ({
+        status: "failed",
+        raw: { status: 0 },
+      })),
+    });
+    const executor = createEvmExecutor(adapter);
+    const execution: typeof txExecution = {
+      ...txExecution,
+      approval: {
+        spender: "0x2222222222222222222222222222222222222222",
+        tx: { ...txExecution.tx, data: "0x1234" },
+      },
+    };
+
+    await expect(
+      executor.execute(execution, context())
+    ).rejects.toMatchObject({
+      code: "APPROVAL_FAILED",
+      stage: "approve",
+      details: { confirmationStatus: "failed" },
+    });
   });
 
   it("maps wallet rejection to USER_REJECTED", async () => {

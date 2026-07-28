@@ -205,11 +205,13 @@ describe("McaSwapService", () => {
       executors: [executor],
       fetch,
     });
+    const waitForOrder = vi.spyOn(client, "waitForOrder");
 
     const quote = await client.quote(request);
     const result = await client.swap({
       quote,
       waitFor: "completed",
+      orderPolling: { intervalMs: 111, timeoutMs: 222 },
       onEvent: (event) => events.push(event.type),
     });
 
@@ -242,6 +244,12 @@ describe("McaSwapService", () => {
     });
     expect(String(fetch.mock.calls[2]?.[0])).toContain(
       "orderId=near-deposit-address"
+    );
+    expect(waitForOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        intervalMs: 111,
+        timeoutMs: 222,
+      })
     );
     expect(result.status).toBe("completed");
     expect(events).toEqual([
@@ -343,6 +351,7 @@ describe("McaSwapService", () => {
       ],
       onEvent: (event) => events.push(event.type),
     });
+    const waitForOrder = vi.spyOn(client, "waitForOrder");
 
     const quote = await client.quote(request);
     await expect(client.buildSwap({ quote })).rejects.toMatchObject({
@@ -353,6 +362,7 @@ describe("McaSwapService", () => {
       quote,
       beforeSign,
       waitFor: "completed",
+      orderPolling: { intervalMs: 333, timeoutMs: 444 },
     });
 
     expect(beforeSign).toHaveBeenCalledWith({
@@ -392,6 +402,12 @@ describe("McaSwapService", () => {
     });
     expect(String(fetch.mock.calls[3]?.[0])).toContain(
       "orderId=relayer-order-1"
+    );
+    expect(waitForOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        intervalMs: 333,
+        timeoutMs: 444,
+      })
     );
     expect(result).toMatchObject({
       orderId: "relayer-order-1",

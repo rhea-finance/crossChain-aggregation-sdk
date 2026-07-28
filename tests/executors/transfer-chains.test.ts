@@ -44,6 +44,7 @@ describe("createTronExecutor", () => {
       isAddress: (address) => address.startsWith("T"),
       sendNativeTransfer: vi.fn(async () => ({ txHash: "tron-native" })),
       sendTokenTransfer: vi.fn(async () => ({ txHash: "tron-token" })),
+      waitForTransaction: vi.fn(async () => ({ status: "confirmed" })),
     };
   }
 
@@ -93,7 +94,10 @@ describe("createTronExecutor", () => {
 
   it("confirms a transfer when requested", async () => {
     const wallet = adapter();
-    wallet.waitForTransaction = vi.fn(async () => ({ confirmed: true }));
+    wallet.waitForTransaction = vi.fn(async () => ({
+      status: "confirmed",
+      raw: { confirmed: true },
+    }));
     const executor = createTronExecutor(wallet);
 
     await expect(
@@ -117,6 +121,7 @@ describe("createBitcoinExecutor", () => {
     getChain: () => "btc",
     isAddress: (address) => address.startsWith("bc1"),
     sendTransfer: vi.fn(async () => ({ txHash: "btc-hash" })),
+    waitForTransaction: vi.fn(async () => ({ status: "confirmed" })),
   };
 
   it("requires a fee rate from the build or executor config", async () => {
@@ -165,6 +170,7 @@ describe("createZcashExecutor", () => {
       getChain: () => "zcash",
       isAddress: (address) => address.startsWith("t1"),
       sendTransfer: vi.fn(async () => ({ txHash: "zcash-hash" })),
+      waitForTransaction: vi.fn(async () => ({ status: "confirmed" })),
       ...overrides,
     };
   }
@@ -182,7 +188,10 @@ describe("createZcashExecutor", () => {
 
   it("confirms a Zcash transaction when requested", async () => {
     const wallet = adapter({
-      waitForTransaction: vi.fn(async () => ({ confirmed: true })),
+      waitForTransaction: vi.fn(async () => ({
+        status: "confirmed",
+        raw: { confirmed: true },
+      })),
     });
     const executor = createZcashExecutor(wallet);
 
@@ -229,6 +238,7 @@ describe("createSuiExecutor", () => {
       getChain: () => "sui",
       isAddress: (address) => address.startsWith("0x"),
       transferCoin: vi.fn(async () => ({ txHash: "sui-hash" })),
+      waitForTransaction: vi.fn(async () => ({ status: "confirmed" })),
     };
     const executor = createSuiExecutor(adapter);
 
@@ -249,6 +259,7 @@ describe("createSuiExecutor", () => {
       transferCoin: vi.fn(async () => {
         throw Object.assign(new Error("denied"), { code: 4001 });
       }),
+      waitForTransaction: vi.fn(async () => ({ status: "confirmed" })),
     };
     const executor = createSuiExecutor(adapter);
 

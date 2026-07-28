@@ -45,6 +45,7 @@ describe("createSolanaExecutor", () => {
       getChain: () => "solana",
       getCurrentBlockHeight: () => 101,
       signAndSendTransaction: vi.fn(async () => ({ txHash: "sol-hash" })),
+      waitForTransaction: vi.fn(async () => ({ status: "confirmed" })),
     };
     const executor = createSolanaExecutor(adapter);
 
@@ -60,7 +61,10 @@ describe("createSolanaExecutor", () => {
       getChain: () => "solana",
       getCurrentBlockHeight: () => 99,
       signAndSendTransaction: vi.fn(async () => ({ txHash: "sol-hash" })),
-      waitForTransaction: vi.fn(async () => ({ slot: 1 })),
+      waitForTransaction: vi.fn(async () => ({
+        status: "confirmed",
+        raw: { slot: 1 },
+      })),
     };
     const executor = createSolanaExecutor(adapter);
     const ctx = context({ waitFor: "source-confirmed" });
@@ -85,6 +89,7 @@ describe("createAptosExecutor", () => {
     const adapter: AptosWalletAdapter = {
       getChain: () => "aptos",
       signAndSubmitTransaction: vi.fn(async () => ({ txHash: "aptos-hash" })),
+      waitForTransaction: vi.fn(async () => ({ status: "confirmed" })),
     };
     const executor = createAptosExecutor(adapter);
     const execution: Extract<
@@ -122,7 +127,10 @@ describe("createNearExecutor", () => {
         txHashes: ["register-hash", "swap-hash"],
         raw: { ok: true },
       })),
-      waitForTransactions: vi.fn(async () => ({ final: true })),
+      waitForTransactions: vi.fn(async () => ({
+        status: "confirmed",
+        raw: { final: true },
+      })),
     };
     const executor = createNearExecutor(adapter);
     const execution: Extract<
@@ -155,6 +163,7 @@ describe("createNearExecutor", () => {
     const adapter: NearWalletAdapter = {
       getChain: () => "near",
       signAndSendTransactions: vi.fn(async () => ({ txHashes: ["hash"] })),
+      waitForTransactions: vi.fn(async () => ({ status: "confirmed" })),
     };
     const executor = createNearExecutor(adapter);
 

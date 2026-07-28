@@ -11,11 +11,13 @@ import type {
   SwapExecution,
 } from "../../types/execution";
 import {
+  assertTransactionConfirmed,
   exposeExecutorSigner,
   mapExecutorError,
   requestSignApproval,
   throwIfAborted,
   type ExecutorErrorAdapter,
+  type TransactionConfirmation,
   type TransactionSubmission,
 } from "../shared";
 
@@ -34,10 +36,10 @@ export interface EvmWalletAdapter extends ExecutorErrorAdapter {
     options: { signal?: AbortSignal }
   ): Promise<string>;
   isApprovalRequired?(approval: EvmApproval): boolean | Promise<boolean>;
-  waitForTransaction?(
+  waitForTransaction(
     txHash: string,
     options: { signal?: AbortSignal }
-  ): Promise<unknown>;
+  ): Promise<TransactionConfirmation>;
 }
 
 export function createEvmExecutor(
@@ -193,11 +195,14 @@ async function sendApproval(
       executionId: context.executionId,
       txHash: submission.txHash,
     });
-    if (adapter.waitForTransaction) {
-      await adapter.waitForTransaction(submission.txHash, {
-        signal: context.signal,
-      });
-    }
+    const confirmation = await adapter.waitForTransaction(submission.txHash, {
+      signal: context.signal,
+    });
+    assertTransactionConfirmed(confirmation, {
+      code: "APPROVAL_FAILED",
+      stage: "approve",
+      message: "EVM approval transaction failed",
+    });
   } catch (error) {
     throw mapExecutorError(
       error,
@@ -221,21 +226,19 @@ async function confirmIfRequested(
       ...(submission.raw !== undefined ? { raw: submission.raw } : {}),
     };
   }
-  if (!adapter.waitForTransaction) {
-    return {
-      status: "submitted",
-      txHash: submission.txHash,
-      ...(submission.raw !== undefined ? { raw: submission.raw } : {}),
-    };
-  }
   try {
     const confirmation = await adapter.waitForTransaction(submission.txHash, {
       signal: context.signal,
     });
+    const confirmationRaw = assertTransactionConfirmed(confirmation, {
+      code: "BROADCAST_FAILED",
+      stage: "broadcast",
+      message: "EVM transaction failed",
+    });
     return {
       status: "source-confirmed",
       txHash: submission.txHash,
-      raw: confirmation ?? submission.raw,
+      raw: confirmationRaw ?? submission.raw,
     };
   } catch (error) {
     throw mapExecutorError(

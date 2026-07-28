@@ -87,6 +87,22 @@ describe("ApiClient", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
+  it("maps error envelopes that omit data as API_ERROR", async () => {
+    const fetch = vi.fn(async () =>
+      jsonResponse({ code: -1, msg: "Cross-chain quote failed" })
+    );
+    const client = new ApiClient({
+      baseUrl: "https://swap.example",
+      fetch: fetch as typeof globalThis.fetch,
+      retry: { maxRetries: 0 },
+    });
+
+    await expect(client.quote({} as never)).rejects.toMatchObject({
+      code: "API_ERROR",
+      message: "Cross-chain quote failed",
+    });
+  });
+
   it("serializes history query without undefined values", async () => {
     const fetch = vi.fn(async () =>
       jsonResponse({

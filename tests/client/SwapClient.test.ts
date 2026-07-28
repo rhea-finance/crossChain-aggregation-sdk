@@ -353,6 +353,7 @@ describe("SwapClient execution lifecycle", () => {
       reportMode: "disabled",
       fetch,
     });
+    const waitForOrder = vi.spyOn(client, "waitForOrder");
     const build = normalizeBuild(
       {
         ...buildFixtures.evmSignature,
@@ -369,9 +370,19 @@ describe("SwapClient execution lifecycle", () => {
     );
 
     await expect(
-      client.executeSwap({ build, waitFor: "completed" })
+      client.executeSwap({
+        build,
+        waitFor: "completed",
+        orderPolling: { intervalMs: 123, timeoutMs: 456 },
+      })
     ).resolves.toMatchObject({ status: "completed", orderId: "order-1" });
 
+    expect(waitForOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        intervalMs: 123,
+        timeoutMs: 456,
+      })
+    );
     expect(String(fetch.mock.calls[1]?.[0])).toBe(
       "https://swap.example/api/swap/order-status?orderId=order-1&router=cow-status&chainId=56"
     );
@@ -533,6 +544,58 @@ describe("SwapClient execution lifecycle", () => {
         timeoutMs: 100,
       })
     ).resolves.toMatchObject({ status });
+  });
+
+  it("polls indefinitely by default when timeoutMs is omitted", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(response({ status: "PROCESSING" }))
+      .mockResolvedValueOnce(response({ status: "SUCCESS" }));
+    const now = vi
+      .fn<() => number>()
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(300_000);
+    const client = new SwapClient({
+      baseUrl: "https://swap.example",
+      fetch,
+      now,
+    });
+
+    await expect(
+      client.waitForOrder({
+        orderId: "order-no-timeout",
+        router: "nearintents",
+        intervalMs: 0,
+      })
+    ).resolves.toMatchObject({ status: "completed" });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("honors an explicit order polling timeout", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(response({ status: "PROCESSING" }));
+    const now = vi
+      .fn<() => number>()
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(101);
+    const client = new SwapClient({
+      baseUrl: "https://swap.example",
+      fetch,
+      now,
+    });
+
+    await expect(
+      client.waitForOrder({
+        orderId: "order-timeout",
+        router: "nearintents",
+        intervalMs: 0,
+        timeoutMs: 100,
+      })
+    ).rejects.toMatchObject({
+      code: "ORDER_TIMEOUT",
+      stage: "status",
+    });
   });
 
   it("stops order polling when aborted", async () => {

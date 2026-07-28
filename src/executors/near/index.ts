@@ -7,12 +7,14 @@ import type {
 import type { ChainRef } from "../../types/chain";
 import type { NearTransaction } from "../../types/execution";
 import {
+  assertTransactionConfirmed,
   assertChain,
   exposeExecutorSigner,
   mapExecutorError,
   requestSignApproval,
   throwIfAborted,
   type ExecutorErrorAdapter,
+  type TransactionConfirmation,
 } from "../shared";
 
 export interface NearWalletAdapter extends ExecutorErrorAdapter {
@@ -21,10 +23,10 @@ export interface NearWalletAdapter extends ExecutorErrorAdapter {
     transactions: NearTransaction[],
     options: { signal?: AbortSignal }
   ): Promise<{ txHashes: string[]; raw?: unknown }>;
-  waitForTransactions?(
+  waitForTransactions(
     txHashes: string[],
     options: { signal?: AbortSignal }
-  ): Promise<unknown>;
+  ): Promise<TransactionConfirmation>;
 }
 
 export function createNearExecutor(
@@ -93,7 +95,7 @@ async function confirm(
   context: ExecutionContext
 ): Promise<ChainExecutionResult> {
   const txHash = submission.txHashes[submission.txHashes.length - 1]!;
-  if (context.waitFor === "submitted" || !adapter.waitForTransactions) {
+  if (context.waitFor === "submitted") {
     return {
       status: "submitted",
       txHash,
@@ -106,11 +108,16 @@ async function confirm(
       submission.txHashes,
       { signal: context.signal }
     );
+    const confirmationRaw = assertTransactionConfirmed(confirmation, {
+      code: "BROADCAST_FAILED",
+      stage: "broadcast",
+      message: "NEAR transaction batch failed",
+    });
     return {
       status: "source-confirmed",
       txHash,
       txHashes: submission.txHashes,
-      raw: confirmation ?? submission.raw,
+      raw: confirmationRaw ?? submission.raw,
     };
   } catch (error) {
     throw mapExecutorError(

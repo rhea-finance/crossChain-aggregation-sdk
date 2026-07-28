@@ -94,7 +94,7 @@ export interface SwapSigningRequestRaw {
   type: string;
   router: string;
   quoteId: string;
-  chainId: number;
+  chainId: number | string;
   signingScheme?: string;
   typedData: {
     domain: Record<string, unknown>;

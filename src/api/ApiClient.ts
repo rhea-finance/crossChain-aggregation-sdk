@@ -419,15 +419,13 @@ export class ApiClient {
   }
 
   private isEnvelope(value: unknown): value is SwapApiResponse<unknown> {
-    return (
-      typeof value === "object" &&
-      value !== null &&
-      "code" in value &&
-      typeof value.code === "number" &&
-      "msg" in value &&
-      typeof value.msg === "string" &&
-      "data" in value
-    );
+    if (typeof value !== "object" || value === null) return false;
+    if (!("code" in value) || typeof value.code !== "number") return false;
+    if (!("msg" in value) || typeof value.msg !== "string") return false;
+    // Successful responses must include `data`. Error envelopes from the
+    // service sometimes omit it (only `{ code, msg }`), which is still valid.
+    if (value.code === 0 && !("data" in value)) return false;
+    return true;
   }
 
   private readMessage(value: unknown): string | undefined {

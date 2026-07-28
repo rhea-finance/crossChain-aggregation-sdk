@@ -50,6 +50,24 @@ describe("normalizeBuild", () => {
     expect(result.execution.chain).toBe("1");
   });
 
+  it.each([
+    ["1", 1],
+    ["0x1", 1],
+  ] as const)("normalizes EVM transaction chainId %s", (chainId, expected) => {
+    const result = normalizeBuild({
+      ...buildFixtures.evmTransaction,
+      tx: {
+        ...(buildFixtures.evmTransaction.tx as Record<string, unknown>),
+        chainId,
+      },
+    });
+
+    expect(result.execution).toMatchObject({
+      kind: "evm-transaction",
+      tx: { chainId: expected },
+    });
+  });
+
   it("normalizes JSON-RPC hex quantities in an EVM transaction", () => {
     const result = normalizeBuild({
       ...buildFixtures.evmTransaction,
@@ -70,6 +88,81 @@ describe("normalizeBuild", () => {
         chainId: 8453,
       },
     });
+  });
+
+  it("normalizes the live EVM build response shape", () => {
+    const result = normalizeBuild({
+      ...buildFixtures.evmTransaction,
+      fromChain: "1",
+      toChain: "8453",
+      approve: {
+        // The live API may put the token contract here. The calldata contains
+        // the actual ERC-20 allowance spender.
+        spender: "0xdac17f958d2ee523a2206206994597c13d831ec7",
+        tx: {
+          chainId: "1",
+          data:
+            "0x095ea7b300000000000000000000000069460570c93f9de5e2edbc3052bf10125f0ca22d0000000000000000000000000000000000000000000000000000000000198911",
+          from: "0xa6183ba7f475b25c1b8d6c9b7be3d0ee7c27bfdf",
+          gasLimit: "60000",
+          to: "0xdac17f958d2ee523a2206206994597c13d831ec7",
+          value: "0",
+        },
+      },
+      tx: {
+        chainId: 1,
+        data: "0xabcdef",
+        from: "0xa6183ba7f475b25c1b8d6c9b7be3d0ee7c27bfdf",
+        gasLimit: "0x4acf0",
+        maxFeePerGas: "0x8d64c4ea",
+        maxPriorityFeePerGas: "0x6fd42fb2",
+        to: "0x69460570c93f9DE5E2edbC3052bf10125f0Ca22d",
+        value: "0x0",
+      },
+    });
+
+    expect(result.execution).toMatchObject({
+      kind: "evm-transaction",
+      tx: {
+        chainId: 1,
+        from: "0xa6183ba7f475b25c1b8d6c9b7be3d0ee7c27bfdf",
+        gasLimit: BigInt("0x4acf0").toString(),
+        maxFeePerGas: BigInt("0x8d64c4ea").toString(),
+        maxPriorityFeePerGas: BigInt("0x6fd42fb2").toString(),
+        value: "0",
+      },
+      approval: {
+        spender: "0x69460570c93f9de5e2edbc3052bf10125f0ca22d",
+        tx: {
+          chainId: 1,
+          from: "0xa6183ba7f475b25c1b8d6c9b7be3d0ee7c27bfdf",
+          gasLimit: "60000",
+        },
+      },
+    });
+  });
+
+  it("accepts null gasLimit on EVM transactions from the live API", () => {
+    const result = normalizeBuild({
+      ...buildFixtures.evmTransaction,
+      tx: {
+        ...(buildFixtures.evmTransaction.tx as Record<string, unknown>),
+        gasLimit: null,
+      },
+    });
+
+    expect(result.execution).toMatchObject({
+      kind: "evm-transaction",
+      tx: {
+        to: expect.any(String),
+        data: expect.any(String),
+        value: "0",
+        chainId: 1,
+      },
+    });
+    if (result.execution.kind === "evm-transaction") {
+      expect(result.execution.tx.gasLimit).toBeUndefined();
+    }
   });
 
   it("normalizes JSON-RPC hex quantities in an EVM approval", () => {

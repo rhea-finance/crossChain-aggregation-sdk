@@ -33,36 +33,9 @@ The product support list matches `multi-chain-lending` Trade: **18 mainnets**. U
 
 "Supported" means the product can load tokens for that chain and send them into the unified quote flow. It does **not** guarantee a route for every pair. Live liquidity, routers, amount, and service status still decide whether a quote succeeds.
 
-### Token coverage by chain (Unified Swap)
+### Token coverage (Unified Swap)
 
-Counts below are filtered to the 18 product chains above. Source snapshot: 2026-07-24 Unified Swap API token support survey.
-
-- **Same-chain**: tokens that can enter the same-chain DEX quote path on that chain.
-- **Cross-chain From / To**: Near Intents 1Click tokens when the chain is an origin or destination.
-- **Unified From / To**: same-chain + cross-chain, deduplicated.
-
-| Chain | Same-chain | Cross-chain From | Cross-chain To | Unified From | Unified To |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| `bsc` | 1463 | 9 | 9 | 1463 | 1463 |
-| `eth` | 1380 | 27 | 27 | 1380 | 1380 |
-| `base` | 362 | 17 | 17 | 362 | 362 |
-| `sol` | 197 | 17 | 17 | 197 | 197 |
-| `aptos` | 197 | 3 | 3 | 197 | 197 |
-| `near` | 139 | 46 | 46 | 164 | 164 |
-| `pol` | 151 | 5 | 5 | 151 | 151 |
-| `arb` | 142 | 7 | 7 | 142 | 142 |
-| `op` | 76 | 5 | 5 | 76 | 76 |
-| `monad` | 48 | 3 | 3 | 48 | 48 |
-| `xlayer` | 19 | 3 | 3 | 19 | 19 |
-| `plasma` | 11 | 4 | 4 | 11 | 11 |
-| `gnosis` | 9 | 9 | 9 | 9 | 9 |
-| `bera` | 2 | 2 | 2 | 2 | 2 |
-| `sui` | 0 | 2 | 2 | 2 | 2 |
-| `tron` | 0 | 2 | 2 | 2 | 2 |
-| `btc` | 0 | 2 | 2 | 2 | 2 |
-| `zec` / `zcash` | 0 | 1 | 1 | 1 | 1 |
-
-NEAR Unified counts are higher than either same-chain or cross-chain alone because the Ref/SmartRouter set and the 1Click set only partially overlap. Aptos same-chain counts use Hyperion pool tokens (not only Redis bluechips). Chains with `0` same-chain still support cross-chain From/To via Intents.
+Across the 18 product chains above, Unified Swap currently covers **4,000+** tokens (same-chain DEX metadata plus cross-chain Intents tokens, deduplicated per direction). Snapshot: 2026-07-24. Counts change as liquidity providers and Intents listings update; always fetch the live token APIs below for the current list.
 
 ### How to fetch supported tokens
 
@@ -186,6 +159,9 @@ const evmAdapter: EvmWalletAdapter = {
       data: tx.data,
       value: tx.value,
       gasLimit: tx.gasLimit,
+      gasPrice: tx.gasPrice,
+      maxFeePerGas: tx.maxFeePerGas,
+      maxPriorityFeePerGas: tx.maxPriorityFeePerGas,
     });
     return { txHash: response.hash, raw: response };
   },
@@ -199,7 +175,11 @@ const evmAdapter: EvmWalletAdapter = {
   },
 
   async waitForTransaction(txHash) {
-    return provider.waitForTransaction(txHash);
+    const receipt = await provider.waitForTransaction(txHash);
+    return {
+      status: receipt?.status === 1 ? "confirmed" : "failed",
+      raw: receipt,
+    };
   },
 };
 
@@ -207,6 +187,8 @@ const evmExecutor = createEvmExecutor(evmAdapter);
 ```
 
 The EVM executor does not read the currently connected chain. It uses `tx.chainId` from the API build response. The wallet should prompt the user or switch networks when sending the transaction.
+
+The build normalizer accepts EVM chain IDs as numbers, decimal strings, or JSON-RPC hexadecimal strings and exposes them to the adapter as numbers. It also preserves `from`, `gasPrice`, `maxFeePerGas`, and `maxPriorityFeePerGas`. For standard ERC-20 approval calldata, the SDK treats the encoded allowance spender as authoritative when the API's separate `approve.spender` field is inconsistent.
 
 ### 3.2 Create a SwapClient
 
@@ -283,6 +265,10 @@ To let the SDK continue polling for final delivery:
 const result = await client.swap({
   quote,
   waitFor: "completed",
+  orderPolling: {
+    intervalMs: 5000,
+    timeoutMs: 600000,
+  },
 });
 
 if (result.status === "completed") {
@@ -290,7 +276,9 @@ if (result.status === "completed") {
 }
 ```
 
-`"completed"` polls the API only when the build response contains a queryable `orderId`. The default polling interval is 5 seconds and the default timeout is 250 seconds. A timeout throws `ORDER_TIMEOUT`, but it does not revert an already submitted on-chain transaction.
+`"completed"` polls the API only when the build response contains a queryable `orderId`. The default polling interval is 5 seconds. There is no default polling timeout, so polling continues until the order reaches a terminal state or the supplied `AbortSignal` is aborted.
+
+Set `orderPolling.timeoutMs` only when the application needs a time limit. An explicit timeout throws `ORDER_TIMEOUT`, but it does not revert an already submitted on-chain transaction.
 
 ### 3.5 Check final delivery status
 
@@ -302,7 +290,7 @@ if (result.orderId) {
     orderId: result.orderId,
     router: result.router,
     intervalMs: 5000,
-    timeoutMs: 250000,
+    timeoutMs: 600000,
   });
 
   console.log(finalStatus.status);
@@ -385,6 +373,7 @@ Important normalized quote fields:
 | --- | --- | --- | --- |
 | `quote` | `Quote` | Yes | The value returned by `client.quote()`. Pass it directly without modification. |
 | `waitFor` | `"submitted" \| "source-confirmed" \| "completed"` | No | Default: `"submitted"`. |
+| `orderPolling` | `OrderPollingOptions` | No | Used with `waitFor: "completed"`. `intervalMs` defaults to `5000`; omit `timeoutMs` to poll indefinitely. |
 | `signal` | `AbortSignal` | No | Cancels unfinished SDK requests or waits. It cannot withdraw an already broadcast transaction. |
 | `onEvent` | `(event) => void` | No | Receives lifecycle events for this swap only. |
 | `beforeSign` | `(preview) => void \| Promise<void>` | No | Called before each wallet signature or transaction request. It can be used for application confirmation UI. |
@@ -395,8 +384,15 @@ Wait modes:
 | Mode | Return condition |
 | --- | --- |
 | `submitted` | Returns after the wallet signs or broadcasts the source action. |
-| `source-confirmed` | Waits for source-chain confirmation when the executor provides a confirmation method; otherwise falls back to `submitted`. |
+| `source-confirmed` | Calls the required wallet confirmation method and returns only when it reports `confirmed`. A `failed` or malformed status throws `BROADCAST_FAILED`. |
 | `completed` | After source execution, polls the server until a delivery terminal state when an order reference exists. Without an order reference, it returns the source execution result. |
+
+`waitForOrder()` accepts the same polling values directly:
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `intervalMs` | `number` | No | Delay between status requests in milliseconds. Default: `5000`. |
+| `timeoutMs` | `number` | No | Maximum total polling duration in milliseconds. Omit it to poll indefinitely. |
 
 ### 4.5 SwapExecutionResult
 
@@ -465,16 +461,27 @@ import { createSuiExecutor } from "@rhea-finance/cross-chain-aggregation-dex/exe
 
 | Chain | Supported execution kinds | Core adapter capabilities |
 | --- | --- | --- |
-| EVM | `evm-transaction`, `evm-signature` | `sendTransaction`, `signTypedData`; optional `waitForTransaction`. |
-| Solana | `solana-transaction` | Submit a serialized transaction; optional confirmation wait. |
-| Aptos | `aptos-entry-function` | Submit an entry function; optional confirmation wait. |
-| NEAR | `near-transaction-batch` | Submit NEAR transactions sequentially or as a batch; optional confirmation wait. |
-| Tron | `tron-transfer` | Submit a native-token or token transfer; optional confirmation wait. |
-| Bitcoin | `bitcoin-transfer` | Submit a UTXO transfer. Configure `defaultFeeRate` when the build does not provide a fee rate. |
-| Zcash | `zcash-transfer` | Submit a transparent-address transfer and return a real `txHash`; optional confirmation wait. |
-| Sui | `sui-transfer` | Submit a coin transfer; optional confirmation wait. |
+| EVM | `evm-transaction`, `evm-signature` | `sendTransaction`, `signTypedData`, and `waitForTransaction`. |
+| Solana | `solana-transaction` | Submit a serialized transaction and implement `waitForTransaction`. |
+| Aptos | `aptos-entry-function` | Submit an entry function and implement `waitForTransaction`. |
+| NEAR | `near-transaction-batch` | Submit NEAR transactions and implement `waitForTransactions`. |
+| Tron | `tron-transfer` | Submit a native-token or token transfer and implement `waitForTransaction`. |
+| Bitcoin | `bitcoin-transfer` | Submit a UTXO transfer and implement `waitForTransaction`. Configure `defaultFeeRate` when the build does not provide a fee rate. |
+| Zcash | `zcash-transfer` | Submit a transparent-address transfer and implement `waitForTransaction`. |
+| Sui | `sui-transfer` | Submit a coin transfer and implement `waitForTransaction`. |
 
 Zcash follows the same standard as every other chain: a successful wallet submission must return a real transaction hash. The SDK never invents a transaction hash.
+
+Every built-in wallet adapter must implement a confirmation method. It must return this normalized result instead of returning a chain-specific receipt directly:
+
+```ts
+type TransactionConfirmation = {
+  status: "confirmed" | "failed";
+  raw?: unknown;
+};
+```
+
+The adapter is responsible for interpreting its chain-specific receipt, including EVM `receipt.status`, Solana `meta.err`, Aptos execution success, NEAR final execution status, and the confirmation policy used for UTXO chains. The SDK rejects both `failed` and malformed confirmation statuses.
 
 For MCA quotes, the SDK may also read these methods from the registered executor:
 
@@ -489,7 +496,7 @@ When the swap API build response contains an `approval`, the EVM executor perfor
 
 1. Call the optional `isApprovalRequired(approval)` method. If it is not implemented, approval is assumed to be required.
 2. Submit the approval transaction.
-3. If the adapter implements `waitForTransaction`, wait for the approval transaction to confirm.
+3. Call the required `waitForTransaction` method and require a `confirmed` result.
 4. Submit the main swap transaction or request the EIP-712 signature.
 
 Applications do not need to query allowances or inspect `needsApprove`. To avoid unnecessary approval transactions, implement `isApprovalRequired` in the adapter:

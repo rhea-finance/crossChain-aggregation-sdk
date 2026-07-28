@@ -15,6 +15,11 @@ export interface TransactionSubmission {
   raw?: unknown;
 }
 
+export interface TransactionConfirmation {
+  status: "confirmed" | "failed";
+  raw?: unknown;
+}
+
 export interface ExecutorErrorAdapter {
   isUserRejection?(error: unknown): boolean;
   /** Identity serialized as `mca.signer.identityKey` for MCA quotes. */
@@ -101,6 +106,39 @@ export function mapExecutorError(
     });
   }
   return new SwapSdkError(code, stage, message, { cause: error });
+}
+
+export function assertTransactionConfirmed(
+  confirmation: TransactionConfirmation,
+  options: {
+    code: SwapErrorCode;
+    stage: SwapErrorStage;
+    message: string;
+  }
+): unknown {
+  if (confirmation?.status === "confirmed") {
+    return confirmation.raw;
+  }
+  const status =
+    confirmation &&
+    typeof confirmation === "object" &&
+    "status" in confirmation
+      ? String(confirmation.status)
+      : "missing";
+  throw new SwapSdkError(
+    options.code,
+    options.stage,
+    `${options.message}: wallet confirmation status is ${status}`,
+    {
+      cause:
+        confirmation &&
+        typeof confirmation === "object" &&
+        "raw" in confirmation
+          ? confirmation.raw
+          : confirmation,
+      details: { confirmationStatus: status },
+    }
+  );
 }
 
 function isUserRejection(

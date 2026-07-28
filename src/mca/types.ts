@@ -2,7 +2,11 @@ import type {
   SwapMcaPayloadRaw,
   SwapQuoteDataRaw,
 } from "../api/rawTypes";
-import type { SwapExecutionResult, WaitMode } from "../core/lifecycle";
+import type {
+  OrderPollingOptions,
+  SwapExecutionResult,
+  WaitMode,
+} from "../core/lifecycle";
 import type { Quote, QuoteRequest } from "../types/quote";
 
 export type McaFlow = "deposit" | "withdraw";
@@ -94,6 +98,7 @@ export type McaQuote =
 export interface McaSwapInput {
   quote: McaQuote;
   waitFor?: WaitMode;
+  orderPolling?: OrderPollingOptions;
   signal?: AbortSignal;
   idempotencyKey?: string;
   onEvent?: (event: import("../core/lifecycle").SwapLifecycleEvent) => void;

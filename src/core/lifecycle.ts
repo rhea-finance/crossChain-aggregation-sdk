@@ -69,9 +69,17 @@ export interface SwapExecutionResult {
   raw: unknown;
 }
 
+export interface OrderPollingOptions {
+  /** Delay between order-status requests in milliseconds. Defaults to 5000. */
+  intervalMs?: number;
+  /** Maximum polling duration in milliseconds. Omit to poll indefinitely. */
+  timeoutMs?: number;
+}
+
 export interface ExecuteSwapInput {
   build: SwapBuild;
   waitFor?: WaitMode;
+  orderPolling?: OrderPollingOptions;
   signal?: AbortSignal;
   onEvent?: (event: SwapLifecycleEvent) => void;
   beforeSign?: (preview: SignRequestPreview) => void | Promise<void>;
@@ -89,10 +97,10 @@ export interface OrderStatusResult {
   raw: SwapOrderStatusDataRaw;
 }
 
-export interface WaitForOrderInput extends OrderReference {
+export interface WaitForOrderInput
+  extends OrderReference,
+    OrderPollingOptions {
   signal?: AbortSignal;
-  intervalMs?: number;
-  timeoutMs?: number;
 }
 
 const ORDER_STATUS_MAP: Record<string, OrderStatus> = {
