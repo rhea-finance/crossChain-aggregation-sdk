@@ -303,6 +303,9 @@ describe("ApiClient", () => {
 
   it("logs retry metadata without request payloads", async () => {
     const logger: SdkLogger = { log: vi.fn() };
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
     const fetch = vi
       .fn<typeof globalThis.fetch>()
       .mockRejectedValueOnce(new Error("offline"))
@@ -316,20 +319,35 @@ describe("ApiClient", () => {
       retry: { baseDelayMs: 0, jitter: false },
     });
 
-    await client.quote({ sender: "private-sender" } as never);
+    try {
+      await client.quote({ sender: "private-sender" } as never);
 
-    expect(logger.log).toHaveBeenCalledWith(
-      expect.objectContaining({
-        level: "warn",
-        event: "api.retry",
-        stage: "quote",
-        attempt: 1,
-        code: "HTTP_ERROR",
-      })
-    );
-    expect(JSON.stringify(vi.mocked(logger.log).mock.calls)).not.toContain(
-      "private-sender"
-    );
+      expect(logger.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          level: "warn",
+          event: "api.retry",
+          stage: "quote",
+          attempt: 1,
+          code: "HTTP_ERROR",
+        })
+      );
+      expect(consoleError).toHaveBeenCalledWith(
+        "SDK network request failed",
+        expect.objectContaining({
+          method: "POST",
+          path: "/api/swap/quote",
+          stage: "quote",
+          attempt: 1,
+          causeName: "Error",
+          causeMessage: "offline",
+        })
+      );
+      expect(JSON.stringify(vi.mocked(logger.log).mock.calls)).not.toContain(
+        "private-sender"
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   it("does not send or retry an already-aborted request", async () => {

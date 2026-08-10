@@ -11,7 +11,11 @@ export interface QuoteRequest {
   tokenOut: AssetRef;
   amountIn: BaseUnitAmount;
   slippageBps: number;
-  /** Near Intents quote waiting time in milliseconds. Defaults to 3000. */
+  /**
+   * Frontend-configurable Near Intents route-quote wait in milliseconds.
+   * Must be a non-negative integer. Defaults to 3000 when omitted.
+   * This is not an HTTP, wallet, settlement, or order-polling timeout.
+   */
   quoteWaitingTimeMs?: number;
   sender: string;
   recipient?: string;
