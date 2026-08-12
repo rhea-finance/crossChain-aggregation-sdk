@@ -116,6 +116,26 @@ describe("quote normalization", () => {
     expect(Object.isFrozen(quote.buildContext)).toBe(true);
   });
 
+  it("treats a missing allQuotes field as no route alternatives", () => {
+    const quoteWithoutAlternatives = { ...raw };
+    delete quoteWithoutAlternatives.allQuotes;
+
+    const quote = normalizeQuote(request, quoteWithoutAlternatives, 1_000);
+
+    expect(quote.route.router).toBe("nearintents");
+    expect(quote.alternatives).toEqual([]);
+  });
+
+  it("ignores a malformed allQuotes field", () => {
+    const quote = normalizeQuote(
+      request,
+      { ...raw, allQuotes: null } as unknown as SwapQuoteDataRaw,
+      1_000
+    );
+
+    expect(quote.alternatives).toEqual([]);
+  });
+
   it("rejects a quote without a router", () => {
     expect(() =>
       normalizeQuote(request, { ...raw, bestQuote: { estimatedOut: "90" } })

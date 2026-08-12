@@ -72,7 +72,7 @@ export function normalizeQuote(
     estimatedOut: bestRoute.amountOut,
     minAmountOut: bestRoute.minAmountOut,
     route: bestRoute,
-    alternatives: raw.allQuotes.flatMap((route) => {
+    alternatives: readQuoteAlternatives(raw.allQuotes).flatMap((route) => {
       try {
         const normalized = normalizeRoute(route, false);
         return normalized ? [normalized] : [];
@@ -85,6 +85,17 @@ export function normalizeQuote(
     buildContext,
     raw,
   };
+}
+
+function readQuoteAlternatives(
+  value: unknown
+): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isRecord);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function validateQuoteRequest(request: QuoteRequest): void {

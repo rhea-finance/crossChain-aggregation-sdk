@@ -61,7 +61,8 @@ export interface SwapQuoteDataRaw {
   isCrossChain: boolean;
   chainType: string;
   bestQuote: Record<string, unknown>;
-  allQuotes: Record<string, unknown>[];
+  /** Optional route alternatives. Some quote responses only return bestQuote. */
+  allQuotes?: Record<string, unknown>[];
   errors?: unknown;
   nearDepositTx?: unknown;
   nearDepositTxError?: string;
