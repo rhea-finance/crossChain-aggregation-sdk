@@ -147,6 +147,7 @@ describe("McaSwapService", () => {
       },
       amountIn: "100",
       slippageBps: 50,
+      confidentiality: "basic",
       sender: "mca.near",
       recipient: "alice.near",
       signerChain: "near",
@@ -241,6 +242,7 @@ describe("McaSwapService", () => {
       tx_type: "mca-withdraw-near",
       multi_addr: "mca.near",
       deposit_address: "near-deposit-address",
+      confidentiality: "basic",
     });
     expect(String(fetch.mock.calls[2]?.[0])).toContain(
       "orderId=near-deposit-address"
@@ -281,6 +283,7 @@ describe("McaSwapService", () => {
       },
       amountIn: "100",
       slippageBps: 50,
+      confidentiality: "basic",
       sender: "mca.near",
       recipient: "0xrecipient",
       signerChain: "evm",
@@ -399,6 +402,7 @@ describe("McaSwapService", () => {
       tx_type: "mca-withdraw-relayer",
       multi_addr: "mca.near",
       swapId: "relayer-order-1",
+      confidentiality: "basic",
     });
     expect(String(fetch.mock.calls[3]?.[0])).toContain(
       "orderId=relayer-order-1"
@@ -422,6 +426,7 @@ describe("McaSwapService", () => {
       from_hash: "relayer-order-1",
       tx_type: "mca-withdraw-relayer",
       multi_addr: "mca.near",
+      confidentiality: "basic",
     });
     expect(events).toEqual([
       "signing-requested",

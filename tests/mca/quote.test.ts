@@ -121,6 +121,38 @@ describe("MCA quote serialization", () => {
     });
   });
 
+  it("derives needDecreaseCollateral and canonicalizes its amount", () => {
+    const positive = serializeMcaQuoteRequest(
+      {
+        ...withdrawRequest,
+        collateral: {
+          needDecrease: false,
+          decreaseAmountBurrow: "0012.5000",
+        },
+      },
+      withdrawSigner
+    );
+    expect(positive.mca).toMatchObject({
+      needDecreaseCollateral: true,
+      decreaseCollateralAmountBurrow: "12.5",
+    });
+
+    const zero = serializeMcaQuoteRequest(
+      {
+        ...withdrawRequest,
+        collateral: {
+          needDecrease: true,
+          decreaseAmountBurrow: "0.000",
+        },
+      },
+      withdrawSigner
+    );
+    expect(zero.mca).toMatchObject({
+      needDecreaseCollateral: false,
+      decreaseCollateralAmountBurrow: "0",
+    });
+  });
+
   it("rejects blank MCA identities", () => {
     expect(() =>
       serializeMcaQuoteRequest({

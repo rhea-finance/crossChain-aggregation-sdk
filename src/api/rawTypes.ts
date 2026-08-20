@@ -51,6 +51,8 @@ export interface SwapQuoteRequestRaw {
   amountIn: string;
   slippage?: number;
   quoteWaitingTimeMs?: number;
+  /** Enables the confidential 1Click route. */
+  confidentiality?: "basic";
   sender: string;
   recipient?: string;
   useAsCollateral?: boolean;
@@ -169,6 +171,8 @@ export interface SwapReportRequestRaw {
   from_token: string;
   to_token: string;
   deposit_address: string;
+  /** Marks reports created by the confidential 1Click route. */
+  confidentiality?: "basic";
   from_chain?: string;
   to_chain?: string;
   is_cross_chain?: boolean;
@@ -191,6 +195,75 @@ export interface SwapHistoryParamsRaw {
   sender: string;
   pageNumber?: number;
   pageSize?: number;
+  mode?: "confidential";
+  /** Wallet-scoped token sent through the Authentication header. */
+  walletToken?: string;
+}
+
+export type SwapHistoryWalletChainFamilyRaw =
+  | "evm"
+  | "solana"
+  | "near"
+  | "aptos"
+  | "sui"
+  | "tron"
+  | "btc"
+  | "zcash";
+
+export interface SwapHistoryAuthChallengeRequestRaw {
+  mcaAccountId?: string;
+  chainFamily: SwapHistoryWalletChainFamilyRaw;
+  chainId: string;
+  walletAddress: string;
+  identityKey?: string;
+  bindingIdentityKey?: string;
+  /** Legacy compatibility field. New callers should use walletAddress. */
+  address?: string;
+}
+
+export interface SwapHistoryAuthChallengeRaw {
+  challengeId: string;
+  expiresAt: string;
+  chainFamily: SwapHistoryWalletChainFamilyRaw;
+  chainId: string;
+  address: string;
+  walletAddress: string;
+  identityKey: string;
+  principalType: "mca" | "wallet";
+  queryAddress: string;
+  mcaAccountId: string | null;
+  signingMethod:
+    | "personal_sign"
+    | "signMessage"
+    | "NEP-413"
+    | "signPersonalMessage"
+    | "signMessageV2"
+    | "bip322-simple"
+    | "signmessage";
+  signingInput: {
+    message: string;
+    recipient?: string;
+    nonce?: string;
+    callbackUrl?: string | null;
+  };
+}
+
+export type SwapHistoryAuthProofRaw = Record<string, string>;
+
+export interface SwapHistoryAuthVerifyRequestRaw {
+  challengeId: string;
+  proof: SwapHistoryAuthProofRaw;
+}
+
+export interface SwapHistoryAuthTokenRaw {
+  token: string;
+  tokenType: "Bearer";
+  expiresIn: number;
+  expiresAt: string;
+  principalType: "mca" | "wallet";
+  queryAddress: string;
+  mcaAccountId: string | null;
+  scope: "swap:history:confidential:read";
 }
 
 export interface SwapHistoryRecordRaw {

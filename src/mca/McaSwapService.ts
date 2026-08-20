@@ -412,6 +412,9 @@ export class McaSwapService {
         tx_type: "mca-withdraw-relayer",
         multi_addr: input.quote.mcaAccountId,
         swapId: orderId,
+        ...(request.confidentiality
+          ? { confidentiality: request.confidentiality }
+          : {}),
       };
       this.relayerReports.set(executionId, reportRequest);
       const result: McaSwapResult = {

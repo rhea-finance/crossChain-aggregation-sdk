@@ -7,6 +7,11 @@ import type {
   SwapBuildDataRaw,
   SwapBuildRequestRaw,
   SwapHistoryDataRaw,
+  SwapHistoryAuthChallengeRaw,
+  SwapHistoryAuthChallengeRequestRaw,
+  SwapHistoryAuthProofRaw,
+  SwapHistoryAuthTokenRaw,
+  SwapHistoryAuthVerifyRequestRaw,
   SwapHistoryParamsRaw,
   SwapOrderStatusDataRaw,
   SwapOrderSubmitDataRaw,
@@ -434,6 +439,39 @@ export class SwapClient {
     return this.api.getHistory(params, options);
   }
 
+  createHistoryAuthChallenge(
+    request: SwapHistoryAuthChallengeRequestRaw,
+    options: ApiRequestOptions = {}
+  ): Promise<SwapHistoryAuthChallengeRaw> {
+    return this.api.createHistoryAuthChallenge(request, options);
+  }
+
+  verifyHistoryAuthChallenge(
+    request: SwapHistoryAuthVerifyRequestRaw,
+    options: ApiRequestOptions = {}
+  ): Promise<SwapHistoryAuthTokenRaw> {
+    return this.api.verifyHistoryAuthChallenge(request, options);
+  }
+
+  async authorizeConfidentialHistory(
+    request: SwapHistoryAuthChallengeRequestRaw,
+    signChallenge: (
+      challenge: SwapHistoryAuthChallengeRaw
+    ) => SwapHistoryAuthProofRaw | Promise<SwapHistoryAuthProofRaw>,
+    options: ApiRequestOptions = {}
+  ): Promise<SwapHistoryAuthTokenRaw> {
+    const challenge = await this.createHistoryAuthChallenge(request, options);
+    assertHistoryChallengeMatchesRequest(challenge, request);
+    const proof = await signChallenge(challenge);
+    const verifyRequest: SwapHistoryAuthVerifyRequestRaw = {
+      challengeId: challenge.challengeId,
+      proof,
+    };
+    const token = await this.verifyHistoryAuthChallenge(verifyRequest, options);
+    assertHistoryTokenMatchesChallenge(token, challenge);
+    return token;
+  }
+
   async getHistory(
     request: HistoryRequest,
     options: ApiRequestOptions = {}
@@ -441,6 +479,8 @@ export class SwapClient {
     const raw = await this.api.getHistory(
       {
         sender: request.sender,
+        ...(request.mode ? { mode: request.mode } : {}),
+        ...(request.walletToken ? { walletToken: request.walletToken } : {}),
         ...(request.page !== undefined ? { pageNumber: request.page } : {}),
         ...(request.pageSize !== undefined ? { pageSize: request.pageSize } : {}),
       },
@@ -514,8 +554,83 @@ export class SwapClient {
       ...(reportContext?.swapId ?? result.orderId
         ? { swapId: reportContext?.swapId ?? result.orderId }
         : {}),
+      ...(request.confidentiality
+        ? { confidentiality: request.confidentiality }
+        : {}),
     };
   }
+}
+
+function assertHistoryChallengeMatchesRequest(
+  challenge: SwapHistoryAuthChallengeRaw,
+  request: SwapHistoryAuthChallengeRequestRaw
+): void {
+  const expectedMca = request.mcaAccountId?.trim();
+  const principalMatches = expectedMca
+    ? challenge.principalType === "mca" &&
+      challenge.mcaAccountId?.toLowerCase() === expectedMca.toLowerCase()
+    : challenge.principalType === "wallet" && !challenge.mcaAccountId;
+  const identityMatches = request.identityKey
+    ? normalizeHistoryIdentity(challenge.chainFamily, challenge.identityKey) ===
+      normalizeHistoryIdentity(challenge.chainFamily, request.identityKey)
+    : true;
+
+  if (
+    challenge.chainFamily !== request.chainFamily ||
+    challenge.chainId !== request.chainId ||
+    normalizeHistoryAddress(challenge.chainFamily, challenge.walletAddress) !==
+      normalizeHistoryAddress(request.chainFamily, request.walletAddress) ||
+    !identityMatches ||
+    !principalMatches ||
+    !challenge.queryAddress
+  ) {
+    throw new SwapSdkError(
+      "INVALID_API_RESPONSE",
+      "history",
+      "Confidential history challenge does not match the requested wallet or MCA"
+    );
+  }
+}
+
+function assertHistoryTokenMatchesChallenge(
+  token: SwapHistoryAuthTokenRaw,
+  challenge: SwapHistoryAuthChallengeRaw
+): void {
+  const principalMatches =
+    token.principalType === challenge.principalType &&
+    (challenge.principalType === "mca"
+      ? token.mcaAccountId?.toLowerCase() ===
+        challenge.mcaAccountId?.toLowerCase()
+      : !token.mcaAccountId);
+  if (!principalMatches || token.queryAddress !== challenge.queryAddress) {
+    throw new SwapSdkError(
+      "INVALID_API_RESPONSE",
+      "history",
+      "Confidential history authorization returned a different principal"
+    );
+  }
+}
+
+function normalizeHistoryAddress(
+  chain: SwapHistoryAuthChallengeRaw["chainFamily"],
+  value: string
+): string {
+  return chain === "evm" || chain === "aptos" || chain === "sui"
+    ? value.toLowerCase()
+    : value;
+}
+
+function normalizeHistoryIdentity(
+  chain: SwapHistoryAuthChallengeRaw["chainFamily"],
+  value: string
+): string {
+  return chain === "evm" ||
+    chain === "aptos" ||
+    chain === "sui" ||
+    chain === "btc" ||
+    chain === "zcash"
+    ? value.toLowerCase().replace(/^0x/, "")
+    : value;
 }
 
 function isMcaQuoteRequest(

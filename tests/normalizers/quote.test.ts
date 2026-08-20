@@ -75,6 +75,17 @@ describe("quote normalization", () => {
     });
   });
 
+  it("serializes confidential quotes as a first-class request field", () => {
+    expect(
+      serializeQuoteRequest({
+        ...request,
+        confidentiality: "basic",
+      })
+    ).toMatchObject({
+      confidentiality: "basic",
+    });
+  });
+
   it.each([-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
     "rejects invalid quote waiting time %s",
     (quoteWaitingTimeMs) => {

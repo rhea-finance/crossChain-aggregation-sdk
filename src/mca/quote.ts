@@ -5,6 +5,7 @@ import type {
 import { SwapSdkError } from "../core/errors";
 import { serializeQuoteRequest } from "../normalizers/quote";
 import type { Quote } from "../types/quote";
+import { resolveMcaDecreaseCollateral } from "./collateral";
 import type {
   McaDepositQuote,
   McaQuote,
@@ -30,16 +31,13 @@ export function serializeMcaQuoteRequest(
   if (!identityKey) {
     throw invalidRequest("signer identityKey is required");
   }
-  if (
-    request.flow === "withdraw" &&
-    !/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(
-      request.collateral.decreaseAmountBurrow.trim()
-    )
-  ) {
-    throw invalidRequest(
-      "collateral.decreaseAmountBurrow must be a non-negative decimal string"
-    );
-  }
+  const decreaseCollateral =
+    request.flow === "withdraw"
+      ? resolveMcaDecreaseCollateral(
+          request.collateral.decreaseAmountBurrow,
+          "collateral.decreaseAmountBurrow"
+        )
+      : undefined;
 
   const mca: SwapMcaPayloadRaw = {
     flow: request.flow,
@@ -51,9 +49,9 @@ export function serializeMcaQuoteRequest(
     ...(request.flow === "deposit"
       ? { useAsCollateral: request.collateral.useAsCollateral }
       : {
-          needDecreaseCollateral: request.collateral.needDecrease,
+          needDecreaseCollateral: decreaseCollateral!.needDecrease,
           decreaseCollateralAmountBurrow:
-            request.collateral.decreaseAmountBurrow,
+            decreaseCollateral!.decreaseAmountBurrow,
           ...(request.collateral.withdrawAll ? { withdrawAll: true } : {}),
         }),
     ...(request.recipientMsgSignatures

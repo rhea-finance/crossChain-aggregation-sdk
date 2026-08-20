@@ -17,6 +17,8 @@ export interface QuoteRequest {
    * This is not an HTTP, wallet, settlement, or order-polling timeout.
    */
   quoteWaitingTimeMs?: number;
+  /** Enables the confidential 1Click route. */
+  confidentiality?: "basic";
   sender: string;
   recipient?: string;
   extensions?: Record<string, unknown>;

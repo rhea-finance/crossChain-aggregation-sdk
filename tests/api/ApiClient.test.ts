@@ -129,6 +129,41 @@ describe("ApiClient", () => {
     );
   });
 
+  it("uses separate API and wallet authorization headers for confidential history", async () => {
+    const fetch = vi.fn(async () =>
+      jsonResponse({
+        code: 0,
+        msg: "ok",
+        data: {
+          record_list: [],
+          page_number: 1,
+          page_size: 20,
+          total_page: 0,
+          total_size: 0,
+        },
+      })
+    );
+    const client = new ApiClient({
+      baseUrl: "https://swap.example",
+      apiKey: "api-token",
+      fetch: fetch as typeof globalThis.fetch,
+    });
+
+    await client.getHistory({
+      sender: "alice",
+      mode: "confidential",
+      walletToken: "wallet-token",
+    });
+
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      "https://swap.example/api/swap/history?sender=alice&mode=confidential"
+    );
+    expect(fetch.mock.calls[0]?.[1]?.headers).toMatchObject({
+      Authorization: "Bearer api-token",
+      Authentication: "Bearer wallet-token",
+    });
+  });
+
   it("retries a quote twice after retryable network failures", async () => {
     const consoleError = vi
       .spyOn(console, "error")

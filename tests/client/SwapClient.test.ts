@@ -85,6 +85,30 @@ describe("SwapClient quote and build", () => {
     });
   });
 
+  it("carries confidentiality from quote through build", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(response(quoteRaw))
+      .mockResolvedValueOnce(response(buildFixtures.bitcoin));
+    const client = new SwapClient({
+      baseUrl: "https://swap.example",
+      fetch,
+    });
+
+    const quote = await client.quote({
+      ...request,
+      confidentiality: "basic",
+    });
+    await client.buildSwap({ quote });
+
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+      confidentiality: "basic",
+    });
+    expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toMatchObject({
+      confidentiality: "basic",
+    });
+  });
+
   it("rejects a stale quote before requesting a build", async () => {
     const fetch = vi
       .fn<typeof globalThis.fetch>()
@@ -415,6 +439,33 @@ describe("SwapClient execution lifecycle", () => {
     });
   });
 
+  it("propagates confidential quote metadata to automatic reports", async () => {
+    const executor: ChainExecutor<"bitcoin-transfer"> = {
+      kinds: ["bitcoin-transfer"],
+      validate: async () => undefined,
+      execute: async () => ({ status: "submitted", txHash: "private-hash" }),
+    };
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(response({ id: 1, from_hash: "private-hash" }));
+    const client = new SwapClient({
+      baseUrl: "https://swap.example",
+      executors: [executor],
+      fetch,
+    });
+    const build = normalizeBuild(
+      buildFixtures.bitcoin,
+      "exec-confidential-report",
+      { ...rawBuildRequest, confidentiality: "basic" }
+    );
+
+    await client.executeSwap({ build });
+
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+      confidentiality: "basic",
+    });
+  });
+
   it("normalizes explicit order statuses", () => {
     expect(normalizeOrderStatus({ status: "SUCCESS" })).toBe("completed");
     expect(normalizeOrderStatus({ state: "FAILED" })).toBe("failed");
@@ -712,5 +763,109 @@ describe("SwapClient history", () => {
       totalItems: 32,
       filteredLocally: true,
     });
+  });
+
+  it("authorizes and queries confidential history", async () => {
+    const challenge = {
+      challengeId: "challenge-1",
+      expiresAt: "2026-08-20T12:00:00.000Z",
+      chainFamily: "evm" as const,
+      chainId: "1",
+      address: "0xAbC",
+      walletAddress: "0xAbC",
+      identityKey: "",
+      principalType: "wallet" as const,
+      queryAddress: "0xAbC",
+      mcaAccountId: null,
+      signingMethod: "personal_sign" as const,
+      signingInput: { message: "Authorize confidential history" },
+    };
+    const token = {
+      token: "wallet-token",
+      tokenType: "Bearer" as const,
+      expiresIn: 300,
+      expiresAt: "2026-08-20T12:05:00.000Z",
+      principalType: "wallet" as const,
+      queryAddress: "0xAbC",
+      mcaAccountId: null,
+      scope: "swap:history:confidential:read" as const,
+    };
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(response(challenge))
+      .mockResolvedValueOnce(response(token))
+      .mockResolvedValueOnce(response(historyRaw));
+    const client = new SwapClient({
+      baseUrl: "https://swap.example",
+      apiKey: "api-token",
+      fetch,
+    });
+    const signChallenge = vi.fn(async () => ({ signature: "0xsigned" }));
+
+    const authorization = await client.authorizeConfidentialHistory(
+      {
+        chainFamily: "evm",
+        chainId: "1",
+        walletAddress: "0xabc",
+      },
+      signChallenge
+    );
+    await client.getHistory({
+      sender: authorization.queryAddress,
+      mode: "confidential",
+      walletToken: authorization.token,
+    });
+
+    expect(signChallenge).toHaveBeenCalledWith(challenge);
+    expect(String(fetch.mock.calls[0]?.[0])).toBe(
+      "https://swap.example/api/swap/history/auth/challenge"
+    );
+    expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual({
+      challengeId: "challenge-1",
+      proof: { signature: "0xsigned" },
+    });
+    expect(String(fetch.mock.calls[2]?.[0])).toBe(
+      "https://swap.example/api/swap/history?sender=0xAbC&mode=confidential"
+    );
+    expect(fetch.mock.calls[2]?.[1]?.headers).toMatchObject({
+      Authorization: "Bearer api-token",
+      Authentication: "Bearer wallet-token",
+    });
+  });
+
+  it("rejects a confidential history challenge for a different wallet", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+      response({
+        challengeId: "challenge-1",
+        expiresAt: "2026-08-20T12:00:00.000Z",
+        chainFamily: "evm",
+        chainId: "1",
+        address: "0xdef",
+        walletAddress: "0xdef",
+        identityKey: "",
+        principalType: "wallet",
+        queryAddress: "0xdef",
+        mcaAccountId: null,
+        signingMethod: "personal_sign",
+        signingInput: { message: "Do not sign" },
+      })
+    );
+    const client = new SwapClient({ baseUrl: "https://swap.example", fetch });
+    const signChallenge = vi.fn(async () => ({ signature: "0xsigned" }));
+
+    await expect(
+      client.authorizeConfidentialHistory(
+        {
+          chainFamily: "evm",
+          chainId: "1",
+          walletAddress: "0xabc",
+        },
+        signChallenge
+      )
+    ).rejects.toMatchObject({
+      code: "INVALID_API_RESPONSE",
+      stage: "history",
+    });
+    expect(signChallenge).not.toHaveBeenCalled();
   });
 });

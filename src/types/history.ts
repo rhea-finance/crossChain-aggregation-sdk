@@ -15,6 +15,10 @@ export interface HistoryRequest {
   page?: number;
   pageSize?: number;
   status?: HistoryStatus[];
+  /** Queries wallet-authorized confidential history. */
+  mode?: "confidential";
+  /** Token returned by the confidential history auth verify endpoint. */
+  walletToken?: string;
 }
 
 export interface SwapHistoryPage {

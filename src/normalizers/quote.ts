@@ -29,6 +29,9 @@ export function serializeQuoteRequest(
     slippage: request.slippageBps,
     quoteWaitingTimeMs:
       request.quoteWaitingTimeMs ?? DEFAULT_QUOTE_WAITING_TIME_MS,
+    ...(request.confidentiality
+      ? { confidentiality: request.confidentiality }
+      : {}),
     sender: request.sender.trim(),
     ...(request.recipient?.trim()
       ? { recipient: request.recipient.trim() }

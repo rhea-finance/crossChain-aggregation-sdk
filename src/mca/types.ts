@@ -32,7 +32,14 @@ export interface McaDepositCollateral {
 }
 
 export interface McaWithdrawCollateral {
-  needDecrease: boolean;
+  /**
+   * @deprecated The SDK derives this value from decreaseAmountBurrow.
+   *
+   * Compatibility hint. The SDK derives the API's needDecreaseCollateral
+   * from decreaseAmountBurrow so contradictory values cannot be sent.
+   */
+  needDecrease?: boolean;
+  /** Required collateral decrease: max(amountBurrow - suppliedBalance, 0). */
   decreaseAmountBurrow: string;
   withdrawAll?: boolean;
 }

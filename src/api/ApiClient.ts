@@ -5,6 +5,10 @@ import {
   SwapBuildDataRaw,
   SwapBuildRequestRaw,
   SwapHistoryDataRaw,
+  SwapHistoryAuthChallengeRaw,
+  SwapHistoryAuthChallengeRequestRaw,
+  SwapHistoryAuthTokenRaw,
+  SwapHistoryAuthVerifyRequestRaw,
   SwapHistoryParamsRaw,
   SwapOrderStatusDataRaw,
   SwapOrderStatusParamsRaw,
@@ -46,6 +50,7 @@ interface RequestOptions extends ApiRequestOptions {
   body?: unknown;
   query?: Record<string, string | number | undefined | null>;
   retryableOperation?: boolean;
+  authenticationToken?: string;
 }
 
 interface NetworkFailureDetails extends Record<string, unknown> {
@@ -151,9 +156,35 @@ export class ApiClient {
       retryableOperation: true,
       query: {
         sender: params.sender,
+        mode: params.mode,
         pageNumber: params.pageNumber,
         pageSize: params.pageSize,
       },
+      ...(params.mode === "confidential" && params.walletToken
+        ? { authenticationToken: params.walletToken }
+        : {}),
+    });
+  }
+
+  createHistoryAuthChallenge(
+    body: SwapHistoryAuthChallengeRequestRaw,
+    options: ApiRequestOptions = {}
+  ): Promise<SwapHistoryAuthChallengeRaw> {
+    return this.request("/api/swap/history/auth/challenge", "history", {
+      ...options,
+      method: "POST",
+      body,
+    });
+  }
+
+  verifyHistoryAuthChallenge(
+    body: SwapHistoryAuthVerifyRequestRaw,
+    options: ApiRequestOptions = {}
+  ): Promise<SwapHistoryAuthTokenRaw> {
+    return this.request("/api/swap/history/auth/verify", "history", {
+      ...options,
+      method: "POST",
+      body,
     });
   }
 
@@ -163,7 +194,10 @@ export class ApiClient {
     options: RequestOptions
   ): Promise<T> {
     const url = this.buildUrl(path, options.query);
-    const headers = await this.buildHeaders(options.idempotencyKey);
+    const headers = await this.buildHeaders(
+      options.idempotencyKey,
+      options.authenticationToken
+    );
     const retry = this.retryConfig();
     let attempt = 1;
 
@@ -346,7 +380,8 @@ export class ApiClient {
   }
 
   private async buildHeaders(
-    idempotencyKey?: string
+    idempotencyKey?: string,
+    authenticationToken?: string
   ): Promise<Record<string, string>> {
     const configured =
       typeof this.config.headers === "function"
@@ -359,6 +394,9 @@ export class ApiClient {
     return {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(authenticationToken
+        ? { Authentication: `Bearer ${authenticationToken}` }
+        : {}),
       ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
       ...configured,
     };
