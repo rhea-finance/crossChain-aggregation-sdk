@@ -41,6 +41,7 @@ export interface NearTransaction {
 }
 
 export interface OrderReference {
+  /** Status-query key. Usually an order ID; confidential Near Intents may use the deposit address. */
   orderId: string;
   router: string;
   chainId?: string;

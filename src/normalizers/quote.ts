@@ -13,6 +13,8 @@ import type {
 import { toApiAssetAddress, toApiChain } from "./chain";
 
 const DEFAULT_QUOTE_WAITING_TIME_MS = 3000;
+const DEFAULT_SAME_CHAIN_TIMEOUT_MS = 500;
+const DEFAULT_CROSS_CHAIN_TIMEOUT_MS = 3000;
 
 export function serializeQuoteRequest(
   request: QuoteRequest
@@ -29,6 +31,10 @@ export function serializeQuoteRequest(
     slippage: request.slippageBps,
     quoteWaitingTimeMs:
       request.quoteWaitingTimeMs ?? DEFAULT_QUOTE_WAITING_TIME_MS,
+    sameChainTimeoutMs:
+      request.sameChainTimeoutMs ?? DEFAULT_SAME_CHAIN_TIMEOUT_MS,
+    crossChainTimeoutMs:
+      request.crossChainTimeoutMs ?? DEFAULT_CROSS_CHAIN_TIMEOUT_MS,
     ...(request.confidentiality
       ? { confidentiality: request.confidentiality }
       : {}),
@@ -50,7 +56,11 @@ export function normalizeQuote(
   }
 
   const quoteId = readOptionalString(raw.bestQuote.quoteId);
-  const apiRequest = Object.freeze({ ...serializeQuoteRequest(request) });
+  const apiRequest = { ...serializeQuoteRequest(request) };
+  delete apiRequest.quoteWaitingTimeMs;
+  delete apiRequest.sameChainTimeoutMs;
+  delete apiRequest.crossChainTimeoutMs;
+  Object.freeze(apiRequest);
   const buildContext: Readonly<BuildContext> = Object.freeze({
     request: apiRequest,
     router: bestRoute.router,
@@ -129,6 +139,14 @@ function validateQuoteRequest(request: QuoteRequest): void {
       "quoteWaitingTimeMs must be a non-negative integer"
     );
   }
+  validateQuoteTimingParameter(
+    request.sameChainTimeoutMs,
+    "sameChainTimeoutMs"
+  );
+  validateQuoteTimingParameter(
+    request.crossChainTimeoutMs,
+    "crossChainTimeoutMs"
+  );
   if (!request.sender.trim()) {
     throw new SwapSdkError(
       "INVALID_REQUEST",
@@ -148,6 +166,22 @@ function validateQuoteRequest(request: QuoteRequest): void {
       "CHAIN_MISMATCH",
       "quote",
       "tokenOut chain does not match toChain"
+    );
+  }
+}
+
+function validateQuoteTimingParameter(
+  value: number | undefined,
+  field: "sameChainTimeoutMs" | "crossChainTimeoutMs"
+): void {
+  if (
+    value !== undefined &&
+    (!Number.isFinite(value) || !Number.isInteger(value) || value < 0)
+  ) {
+    throw new SwapSdkError(
+      "INVALID_REQUEST",
+      "quote",
+      `${field} must be a non-negative integer`
     );
   }
 }

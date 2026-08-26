@@ -134,7 +134,7 @@ export function normalizeBuild(
     const lane = laneFromChainType(common.chainType, fromChain);
     assertLaneMatchesChain(lane, fromChain);
     const execution = normalizeExecution(raw, lane, fromChain);
-    const order = normalizeOrder(raw, execution);
+    const order = normalizeOrder(raw, execution, request);
     const deposit = normalizeDeposit(raw.deposit);
 
     return {
@@ -415,18 +415,25 @@ function assertKind(actual: string, allowed: string[]): void {
 
 function normalizeOrder(
   raw: SwapBuildDataRaw,
-  execution: SwapExecution
+  execution: SwapExecution,
+  request?: SwapBuildRequestRaw
 ): OrderReference | undefined {
   const depositOrderId = readRecordString(raw.deposit, "orderId");
-  const orderId = raw.orderId ?? depositOrderId;
-  if (!orderId) return undefined;
-
   const router =
     raw.statusRouter ??
     (execution.kind === "evm-signature"
       ? execution.request.router
       : undefined) ??
     raw.router;
+  const confidentialNearIntentsStatusKey =
+    request?.confidentiality === "basic" &&
+    router.toLowerCase().includes("nearintents")
+      ? readRecordString(raw.deposit, "depositAddress")
+      : undefined;
+  const orderId =
+    raw.orderId ?? depositOrderId ?? confidentialNearIntentsStatusKey;
+  if (!orderId) return undefined;
+
   const chainId =
     execution.kind === "evm-signature"
       ? String(execution.request.chainId)

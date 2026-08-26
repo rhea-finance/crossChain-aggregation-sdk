@@ -31,6 +31,7 @@ export type SwapErrorStage =
   | "submit"
   | "report"
   | "status"
+  | "tokens"
   | "history";
 
 export interface SwapSdkErrorOptions {

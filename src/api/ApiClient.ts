@@ -2,6 +2,8 @@ import { SwapSdkError, SwapErrorStage } from "../core/errors";
 import type { SdkLogEntry, SdkLogger } from "../core/logger";
 import {
   SwapApiResponse,
+  SwapCrossChainToTokensDataRaw,
+  SwapFromTokensDataRaw,
   SwapBuildDataRaw,
   SwapBuildRequestRaw,
   SwapHistoryDataRaw,
@@ -185,6 +187,30 @@ export class ApiClient {
       ...options,
       method: "POST",
       body,
+    });
+  }
+
+  getFromTokenRows(
+    chainId: number,
+    options: ApiRequestOptions = {}
+  ): Promise<SwapFromTokensDataRaw> {
+    return this.request("/get_chain_prices", "tokens", {
+      ...options,
+      method: "GET",
+      retryableOperation: true,
+      query: { chain: chainId },
+    });
+  }
+
+  getCrossChainToTokenRows(
+    chainId: number,
+    options: ApiRequestOptions = {}
+  ): Promise<SwapCrossChainToTokensDataRaw> {
+    return this.request("/api/swap/supported_to_tokens", "tokens", {
+      ...options,
+      method: "GET",
+      retryableOperation: true,
+      query: { chain: chainId },
     });
   }
 

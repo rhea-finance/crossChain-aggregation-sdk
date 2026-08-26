@@ -10,6 +10,30 @@ export interface SwapApiTokenMetaRaw {
   decimals: number;
 }
 
+export interface SwapTokenListRowRaw extends Record<string, unknown> {
+  address?: string | null;
+  assetId?: string | null;
+  blockchain?: string;
+  chainId?: number;
+  coinType?: string | null;
+  contractAddress?: string | null;
+  decimals?: number | string;
+  isNative?: boolean;
+  logoURI?: string;
+  name?: string;
+  platform?: string;
+  price?: string | number;
+  sources?: string[];
+  symbol?: string;
+  updated_at?: number;
+}
+
+export type SwapFromTokensDataRaw = Record<string, SwapTokenListRowRaw>;
+
+export interface SwapCrossChainToTokensDataRaw {
+  tokens: SwapTokenListRowRaw[];
+}
+
 export interface SwapMcaSignerPayloadRaw {
   chain: string;
   identityKey: string;
@@ -51,6 +75,8 @@ export interface SwapQuoteRequestRaw {
   amountIn: string;
   slippage?: number;
   quoteWaitingTimeMs?: number;
+  sameChainTimeoutMs?: number;
+  crossChainTimeoutMs?: number;
   /** Enables the confidential 1Click route. */
   confidentiality?: "basic";
   sender: string;

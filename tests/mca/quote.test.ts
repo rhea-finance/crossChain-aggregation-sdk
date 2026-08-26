@@ -97,6 +97,8 @@ describe("MCA quote serialization", () => {
 
     expect(raw).toMatchObject({
       quoteWaitingTimeMs: 3000,
+      sameChainTimeoutMs: 500,
+      crossChainTimeoutMs: 3000,
       mca: {
         flow: "deposit",
         mcaAccountId: "mca.near",

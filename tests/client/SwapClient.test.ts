@@ -68,6 +68,8 @@ describe("SwapClient quote and build", () => {
       JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))
     ).toMatchObject({
       quoteWaitingTimeMs: 3000,
+      sameChainTimeoutMs: 500,
+      crossChainTimeoutMs: 3000,
     });
 
     const build = await client.buildSwap({ quote });
@@ -83,6 +85,9 @@ describe("SwapClient quote and build", () => {
       minAmountOut: "890",
       quoteId: "quote-1",
     });
+    expect(buildRequest).not.toHaveProperty("quoteWaitingTimeMs");
+    expect(buildRequest).not.toHaveProperty("sameChainTimeoutMs");
+    expect(buildRequest).not.toHaveProperty("crossChainTimeoutMs");
   });
 
   it("carries confidentiality from quote through build", async () => {
@@ -410,6 +415,96 @@ describe("SwapClient execution lifecycle", () => {
     expect(String(fetch.mock.calls[1]?.[0])).toBe(
       "https://swap.example/api/swap/order-status?orderId=order-1&router=cow-status&chainId=56"
     );
+  });
+
+  it("polls a confidential same-chain Near Intents swap by deposit address", async () => {
+    const executor: ChainExecutor<"evm-transaction"> = {
+      kinds: ["evm-transaction"],
+      validate: async () => undefined,
+      execute: async () => ({
+        status: "source-confirmed",
+        txHash: "0xprivate",
+      }),
+    };
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(response({ status: "SUCCESS" }));
+    const client = new SwapClient({
+      baseUrl: "https://swap.example",
+      executors: [executor],
+      reportMode: "disabled",
+      fetch,
+    });
+    const build = normalizeBuild(
+      {
+        ...buildFixtures.evmTransaction,
+        isCrossChain: false,
+        toChain: "1",
+        deposit: { depositAddress: "private-status-key" },
+      },
+      "exec-confidential-same-chain",
+      {
+        ...rawBuildRequest,
+        fromChain: "1",
+        toChain: "1",
+        tokenIn: "0xtoken-in",
+        tokenOut: "0xtoken-out",
+        confidentiality: "basic",
+      }
+    );
+
+    await expect(
+      client.executeSwap({ build, waitFor: "completed" })
+    ).resolves.toMatchObject({
+      status: "completed",
+      orderId: "private-status-key",
+    });
+    expect(String(fetch.mock.calls[0]?.[0])).toBe(
+      "https://swap.example/api/swap/order-status?orderId=private-status-key&router=nearintents&chainId=1"
+    );
+  });
+
+  it("rejects completed waiting when a confidential swap has no status key", async () => {
+    const executor: ChainExecutor<"evm-transaction"> = {
+      kinds: ["evm-transaction"],
+      validate: async () => undefined,
+      execute: async () => ({
+        status: "source-confirmed",
+        txHash: "0xprivate-without-status-key",
+      }),
+    };
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    const client = new SwapClient({
+      baseUrl: "https://swap.example",
+      executors: [executor],
+      reportMode: "disabled",
+      fetch,
+    });
+    const build = normalizeBuild(
+      {
+        ...buildFixtures.evmTransaction,
+        isCrossChain: false,
+        toChain: "1",
+      },
+      "exec-confidential-missing-status-key",
+      {
+        ...rawBuildRequest,
+        fromChain: "1",
+        toChain: "1",
+        tokenIn: "0xtoken-in",
+        tokenOut: "0xtoken-out",
+        confidentiality: "basic",
+      }
+    );
+
+    await expect(
+      client.executeSwap({ build, waitFor: "completed" })
+    ).rejects.toMatchObject({
+      code: "INVALID_API_RESPONSE",
+      stage: "status",
+      details: { txHash: "0xprivate-without-status-key" },
+    });
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("reports the default ordinary swap transaction type", async () => {

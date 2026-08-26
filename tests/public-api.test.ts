@@ -7,6 +7,8 @@ import {
   SwapSdkError,
   normalizeBuild,
   normalizeHistory,
+  normalizeCrossChainToTokenList,
+  normalizeFromTokenList,
   normalizeQuote,
   formatUnits,
   parseUnits,
@@ -29,6 +31,8 @@ describe("public API", () => {
     expect(SwapSdkError).toBeTypeOf("function");
     expect(normalizeBuild).toBeTypeOf("function");
     expect(normalizeHistory).toBeTypeOf("function");
+    expect(normalizeCrossChainToTokenList).toBeTypeOf("function");
+    expect(normalizeFromTokenList).toBeTypeOf("function");
     expect(normalizeQuote).toBeTypeOf("function");
     expect(parseUnits).toBeTypeOf("function");
     expect(formatUnits).toBeTypeOf("function");

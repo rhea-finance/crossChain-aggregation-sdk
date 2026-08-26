@@ -59,19 +59,25 @@ describe("quote normalization", () => {
       amountIn: "100",
       slippage: 50,
       quoteWaitingTimeMs: 3000,
+      sameChainTimeoutMs: 500,
+      crossChainTimeoutMs: 3000,
       sender: "0xsender",
       recipient: "receiver.near",
     });
   });
 
-  it("preserves a custom quote waiting time", () => {
+  it("preserves custom quote timing parameters", () => {
     expect(
       serializeQuoteRequest({
         ...request,
         quoteWaitingTimeMs: 5000,
+        sameChainTimeoutMs: 750,
+        crossChainTimeoutMs: 6000,
       })
     ).toMatchObject({
       quoteWaitingTimeMs: 5000,
+      sameChainTimeoutMs: 750,
+      crossChainTimeoutMs: 6000,
     });
   });
 
@@ -102,6 +108,29 @@ describe("quote normalization", () => {
       );
     }
   );
+
+  it.each([
+    ["sameChainTimeoutMs", -1],
+    ["sameChainTimeoutMs", 1.5],
+    ["sameChainTimeoutMs", Number.NaN],
+    ["sameChainTimeoutMs", Number.POSITIVE_INFINITY],
+    ["crossChainTimeoutMs", -1],
+    ["crossChainTimeoutMs", 1.5],
+    ["crossChainTimeoutMs", Number.NaN],
+    ["crossChainTimeoutMs", Number.POSITIVE_INFINITY],
+  ] as const)("rejects invalid %s value %s", (field, value) => {
+    expect(() =>
+      serializeQuoteRequest({
+        ...request,
+        [field]: value,
+      })
+    ).toThrowError(
+      expect.objectContaining({
+        code: "INVALID_REQUEST",
+        stage: "quote",
+      })
+    );
+  });
 
   it("normalizes the best route and preserves immutable build context", () => {
     const quote = normalizeQuote(request, raw, 1_000);

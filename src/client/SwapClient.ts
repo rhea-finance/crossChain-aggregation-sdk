@@ -38,6 +38,10 @@ import {
 } from "../normalizers/build";
 import { normalizeQuote, serializeQuoteRequest } from "../normalizers/quote";
 import { normalizeHistory } from "../normalizers/history";
+import {
+  normalizeCrossChainToTokenList,
+  normalizeFromTokenList,
+} from "../normalizers/tokens";
 import { McaSwapService } from "../mca/McaSwapService";
 import type {
   McaQuote,
@@ -48,6 +52,10 @@ import type {
 import type { SwapBuild } from "../types/execution";
 import type { HistoryRequest, SwapHistoryPage } from "../types/history";
 import type { Quote, QuoteRequest } from "../types/quote";
+import type {
+  SwapTokenListItem,
+  TokenListRequest,
+} from "../types/tokens";
 
 export interface SwapClientConfig extends ApiClientConfig {
   maxQuoteAgeMs?: number | null;
@@ -55,6 +63,8 @@ export interface SwapClientConfig extends ApiClientConfig {
   executors?: readonly ChainExecutor[];
   onEvent?: (event: SwapLifecycleEvent) => void;
   now?: () => number;
+  /** Token-list cache lifetime in milliseconds. Defaults to 10 minutes; use 0 to disable. */
+  tokenListCacheTtlMs?: number;
 }
 
 export interface BuildSwapInput {
@@ -72,6 +82,14 @@ export class SwapClient {
   private readonly now: () => number;
   private readonly inFlight = new Set<string>();
   private readonly reportRequests = new Map<string, SwapReportRequestRaw>();
+  private readonly tokenListCache = new Map<
+    string,
+    { expiresAt: number; tokens: SwapTokenListItem[] }
+  >();
+  private readonly tokenListInflight = new Map<
+    string,
+    Promise<SwapTokenListItem[]>
+  >();
 
   constructor(config: SwapClientConfig) {
     this.config = config;
@@ -128,6 +146,75 @@ export class SwapClient {
     options: ApiRequestOptions = {}
   ): Promise<SwapBuildDataRaw> {
     return this.api.build(request, options);
+  }
+
+  async getFromTokens(
+    request: TokenListRequest,
+    options: ApiRequestOptions = {}
+  ): Promise<SwapTokenListItem[]> {
+    return this.loadTokenList("from", request, options, async () => {
+      const raw = await this.api.getFromTokenRows(request.chainId, options);
+      return normalizeFromTokenList(raw, request.chainId);
+    });
+  }
+
+  async getCrossChainToTokens(
+    request: TokenListRequest,
+    options: ApiRequestOptions = {}
+  ): Promise<SwapTokenListItem[]> {
+    return this.loadTokenList("cross-chain-to", request, options, async () => {
+      const raw = await this.api.getCrossChainToTokenRows(
+        request.chainId,
+        options
+      );
+      return normalizeCrossChainToTokenList(raw, request.chainId);
+    });
+  }
+
+  private async loadTokenList(
+    direction: "from" | "cross-chain-to",
+    request: TokenListRequest,
+    options: ApiRequestOptions,
+    load: () => Promise<SwapTokenListItem[]>
+  ): Promise<SwapTokenListItem[]> {
+    if (!Number.isSafeInteger(request.chainId) || request.chainId <= 0) {
+      throw new SwapSdkError(
+        "INVALID_REQUEST",
+        "tokens",
+        `Token-list chainId must be a positive safe integer: ${String(
+          request.chainId
+        )}`
+      );
+    }
+    const ttlMs = Math.max(0, this.config.tokenListCacheTtlMs ?? 600_000);
+    const key = `${direction}:${request.chainId}`;
+    const cached = this.tokenListCache.get(key);
+    if (ttlMs > 0 && cached && cached.expiresAt > this.now()) {
+      return cloneTokenList(cached.tokens);
+    }
+
+    const existing = options.signal
+      ? undefined
+      : this.tokenListInflight.get(key);
+    if (existing) return cloneTokenList(await existing);
+
+    const pending = load()
+      .then((tokens) => {
+        if (ttlMs > 0) {
+          this.tokenListCache.set(key, {
+            expiresAt: this.now() + ttlMs,
+            tokens: cloneTokenList(tokens),
+          });
+        }
+        return tokens;
+      })
+      .finally(() => {
+        if (this.tokenListInflight.get(key) === pending) {
+          this.tokenListInflight.delete(key);
+        }
+      });
+    if (!options.signal) this.tokenListInflight.set(key, pending);
+    return cloneTokenList(await pending);
   }
 
   async buildSwap(input: BuildSwapInput): Promise<SwapBuild> {
@@ -279,7 +366,26 @@ export class SwapClient {
         }
       }
 
-      if ((input.waitFor ?? "submitted") === "completed" && orderId) {
+      const waitsForCompletion =
+        (input.waitFor ?? "submitted") === "completed";
+      const requiresOrderStatus =
+        build.isCrossChain || build.request?.confidentiality === "basic";
+      if (waitsForCompletion && requiresOrderStatus && !orderId) {
+        throw new SwapSdkError(
+          "INVALID_API_RESPONSE",
+          "status",
+          "Swap submitted, but the API did not provide a status key",
+          {
+            details: {
+              executionId: build.executionId,
+              ...(result.txHash ? { txHash: result.txHash } : {}),
+              router: orderRouter ?? build.router,
+            },
+          }
+        );
+      }
+
+      if (waitsForCompletion && orderId) {
         const status = await this.waitForOrder({
           orderId,
           router: orderRouter ?? build.router,
@@ -660,6 +766,14 @@ function isMcaQuote(quote: Quote): quote is McaQuote {
 
 function readNonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function cloneTokenList(tokens: SwapTokenListItem[]): SwapTokenListItem[] {
+  return tokens.map((token) => ({
+    ...token,
+    sources: [...token.sources],
+    raw: { ...token.raw },
+  }));
 }
 
 function delay(ms: number, signal?: AbortSignal): Promise<void> {

@@ -15,8 +15,12 @@ export interface QuoteRequest {
    * Frontend-configurable Near Intents route-quote wait in milliseconds.
    * Must be a non-negative integer. Defaults to 3000 when omitted.
    * This is not an HTTP, wallet, settlement, or order-polling timeout.
-   */
+  */
   quoteWaitingTimeMs?: number;
+  /** Same-chain route quote timeout in milliseconds. Defaults to 500. */
+  sameChainTimeoutMs?: number;
+  /** Cross-chain route quote timeout in milliseconds. Defaults to 3000. */
+  crossChainTimeoutMs?: number;
   /** Enables the confidential 1Click route. */
   confidentiality?: "basic";
   sender: string;
