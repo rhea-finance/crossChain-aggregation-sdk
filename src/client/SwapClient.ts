@@ -58,7 +58,6 @@ import type {
 } from "../types/tokens";
 
 export interface SwapClientConfig extends ApiClientConfig {
-  maxQuoteAgeMs?: number | null;
   reportMode?: "auto" | "manual" | "disabled";
   executors?: readonly ChainExecutor[];
   onEvent?: (event: SwapLifecycleEvent) => void;
@@ -99,7 +98,6 @@ export class SwapClient {
     this.now = config.now ?? Date.now;
     this.managedSwapFlow = new McaSwapService(this, {
       now: this.now,
-      maxQuoteAgeMs: config.maxQuoteAgeMs,
       reportMode: this.reportMode,
       resolveSignerIdentity: (chain) => this.registry.getSigner(chain),
       resolveMessageSigner: (chain) =>
@@ -229,7 +227,6 @@ export class SwapClient {
   }
 
   private async buildStandardSwap(input: BuildSwapInput): Promise<SwapBuild> {
-    this.assertQuoteFresh(input.quote);
     const executionId = createExecutionId();
     this.emit({ type: "build-started", executionId });
     const context = input.quote.buildContext;
@@ -605,24 +602,6 @@ export class SwapClient {
 
   protected emit(event: SwapLifecycleEvent): void {
     this.config.onEvent?.(event);
-  }
-
-  private assertQuoteFresh(quote: Quote): void {
-    const now = this.now();
-    const maxAge =
-      this.config.maxQuoteAgeMs === undefined
-        ? 30_000
-        : this.config.maxQuoteAgeMs;
-    const expiredByApi = quote.expiresAt !== undefined && now > quote.expiresAt;
-    const expiredByAge =
-      maxAge !== null && now - quote.receivedAt > Math.max(0, maxAge);
-    if (expiredByApi || expiredByAge) {
-      throw new SwapSdkError(
-        "QUOTE_EXPIRED",
-        "build",
-        "Quote has expired; request a fresh quote"
-      );
-    }
   }
 
   private createReportRequest(

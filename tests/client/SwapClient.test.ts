@@ -114,29 +114,7 @@ describe("SwapClient quote and build", () => {
     });
   });
 
-  it("rejects a stale quote before requesting a build", async () => {
-    const fetch = vi
-      .fn<typeof globalThis.fetch>()
-      .mockResolvedValue(response(quoteRaw));
-    let now = 1_000;
-    const client = new SwapClient({
-      baseUrl: "https://swap.example",
-      fetch,
-      maxQuoteAgeMs: 30_000,
-      now: () => now,
-    });
-
-    const quote = await client.quote(request);
-    now = 31_001;
-
-    await expect(client.buildSwap({ quote })).rejects.toMatchObject({
-      code: "QUOTE_EXPIRED",
-      stage: "build",
-    });
-    expect(fetch).toHaveBeenCalledTimes(1);
-  });
-
-  it("allows disabling the client-side quote age check", async () => {
+  it("allows building with an old quote", async () => {
     const fetch = vi
       .fn<typeof globalThis.fetch>()
       .mockResolvedValueOnce(response(quoteRaw))
@@ -145,14 +123,15 @@ describe("SwapClient quote and build", () => {
     const client = new SwapClient({
       baseUrl: "https://swap.example",
       fetch,
-      maxQuoteAgeMs: null,
       now: () => now,
     });
 
     const quote = await client.quote(request);
     now = 1_000_000;
 
-    await expect(client.buildSwap({ quote })).resolves.toMatchObject({
+    await expect(
+      client.buildSwap({ quote: { ...quote, expiresAt: 2_000 } })
+    ).resolves.toMatchObject({
       execution: { kind: "bitcoin-transfer" },
     });
     expect(fetch).toHaveBeenCalledTimes(2);
@@ -788,7 +767,7 @@ describe("SwapClient execution lifecycle", () => {
     });
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(String(fetch.mock.calls[0]?.[0])).toBe(
-      "https://swap.example/api/swap/swap"
+      "https://swap.example/api/v2/swap/swap"
     );
   });
 });

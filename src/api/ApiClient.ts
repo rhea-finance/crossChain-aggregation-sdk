@@ -91,7 +91,7 @@ export class ApiClient {
     body: SwapQuoteRequestRaw,
     options: ApiRequestOptions = {}
   ): Promise<SwapQuoteDataRaw> {
-    return this.request("/api/swap/quote", "quote", {
+    return this.request("/api/v2/swap/quote", "quote", {
       ...options,
       method: "POST",
       body,
@@ -103,7 +103,7 @@ export class ApiClient {
     body: SwapBuildRequestRaw,
     options: ApiRequestOptions = {}
   ): Promise<SwapBuildDataRaw> {
-    return this.request("/api/swap/swap", "build", {
+    return this.request("/api/v2/swap/swap", "build", {
       ...options,
       method: "POST",
       body,

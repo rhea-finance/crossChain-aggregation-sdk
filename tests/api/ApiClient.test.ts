@@ -31,7 +31,7 @@ describe("ApiClient", () => {
 
     expect(data.bestQuote).toEqual({ router: "r" });
     expect(fetch).toHaveBeenCalledWith(
-      "https://swap.example/api/swap/quote",
+      "https://swap.example/api/v2/swap/quote",
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({ Authorization: "Bearer token" }),
@@ -194,7 +194,7 @@ describe("ApiClient", () => {
 
   it("prints safe network failure details and enriches the SDK error", async () => {
     const cause = new TypeError(
-      "Failed to fetch https://swap.example/api/swap/quote?secret=query"
+      "Failed to fetch https://swap.example/api/v2/swap/quote?secret=query"
     );
     const fetch = vi.fn<typeof globalThis.fetch>().mockRejectedValue(cause);
     const consoleError = vi
@@ -221,15 +221,15 @@ describe("ApiClient", () => {
         code: "HTTP_ERROR",
         stage: "quote",
         message:
-          "Network request failed: TypeError: Failed to fetch https://swap.example/api/swap/quote?[redacted]",
+          "Network request failed: TypeError: Failed to fetch https://swap.example/api/v2/swap/quote?[redacted]",
         cause,
         details: {
           method: "POST",
-          path: "/api/swap/quote",
+          path: "/api/v2/swap/quote",
           attempt: 1,
           causeName: "TypeError",
           causeMessage:
-            "Failed to fetch https://swap.example/api/swap/quote?[redacted]",
+            "Failed to fetch https://swap.example/api/v2/swap/quote?[redacted]",
         },
       });
 
@@ -237,12 +237,12 @@ describe("ApiClient", () => {
         "SDK network request failed",
         {
           method: "POST",
-          path: "/api/swap/quote",
+          path: "/api/v2/swap/quote",
           stage: "quote",
           attempt: 1,
           causeName: "TypeError",
           causeMessage:
-            "Failed to fetch https://swap.example/api/swap/quote?[redacted]",
+            "Failed to fetch https://swap.example/api/v2/swap/quote?[redacted]",
         }
       );
       const output = JSON.stringify(consoleError.mock.calls);
@@ -322,7 +322,7 @@ describe("ApiClient", () => {
     );
 
     expect(fetch).toHaveBeenCalledWith(
-      "https://swap.example/api/swap/swap",
+      "https://swap.example/api/v2/swap/swap",
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: "Bearer super-secret-token",
@@ -370,7 +370,7 @@ describe("ApiClient", () => {
         "SDK network request failed",
         expect.objectContaining({
           method: "POST",
-          path: "/api/swap/quote",
+          path: "/api/v2/swap/quote",
           stage: "quote",
           attempt: 1,
           causeName: "Error",

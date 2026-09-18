@@ -36,7 +36,6 @@ import {
 
 export interface McaSwapServiceConfig {
   now?: () => number;
-  maxQuoteAgeMs?: number | null;
   reportMode?: "auto" | "manual" | "disabled";
   onEvent?: (event: SwapLifecycleEvent) => void;
   resolveSignerIdentity(
@@ -54,7 +53,6 @@ export interface McaSwapServiceConfig {
 
 export class McaSwapService {
   private readonly now: () => number;
-  private readonly maxQuoteAgeMs: number | null;
   private readonly reportMode: "auto" | "manual" | "disabled";
   private readonly onEvent?: (event: SwapLifecycleEvent) => void;
   private readonly resolveSignerIdentity: McaSwapServiceConfig["resolveSignerIdentity"];
@@ -67,8 +65,6 @@ export class McaSwapService {
     config: McaSwapServiceConfig
   ) {
     this.now = config.now ?? Date.now;
-    this.maxQuoteAgeMs =
-      config.maxQuoteAgeMs === undefined ? 30_000 : config.maxQuoteAgeMs;
     this.reportMode = config.reportMode ?? "auto";
     this.onEvent = config.onEvent;
     this.resolveSignerIdentity = config.resolveSignerIdentity;
@@ -99,7 +95,6 @@ export class McaSwapService {
     signal?: AbortSignal;
     idempotencyKey?: string;
   }): Promise<SwapBuild> {
-    this.assertQuoteFresh(input.quote);
     if (input.quote.executionMode === "withdraw-relayer") {
       throw new SwapSdkError(
         "INVALID_REQUEST",
@@ -126,7 +121,6 @@ export class McaSwapService {
   }
 
   async swap(input: McaSwapInput): Promise<McaSwapResult> {
-    this.assertQuoteFresh(input.quote);
     if (input.quote.executionMode === "withdraw-relayer") {
       return this.executeRelayerWithdraw({ ...input, quote: input.quote });
     }
@@ -502,21 +496,6 @@ export class McaSwapService {
     if (local !== this.onEvent) local?.(event);
   }
 
-  private assertQuoteFresh(quote: McaQuote): void {
-    const now = this.now();
-    const expiredByApi =
-      quote.expiresAt !== undefined && now > quote.expiresAt;
-    const expiredByAge =
-      this.maxQuoteAgeMs !== null &&
-      now - quote.receivedAt > Math.max(0, this.maxQuoteAgeMs);
-    if (expiredByApi || expiredByAge) {
-      throw new SwapSdkError(
-        "QUOTE_EXPIRED",
-        "build",
-        "Quote has expired; request a fresh quote"
-      );
-    }
-  }
 }
 
 function buildRequestFromQuote(quote: McaQuote) {

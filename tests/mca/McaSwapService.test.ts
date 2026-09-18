@@ -262,7 +262,8 @@ describe("McaSwapService", () => {
     ]);
   });
 
-  it("signs and submits an MCA withdraw through the multichain relayer", async () => {
+  it("signs and submits an old MCA withdraw quote through the multichain relayer", async () => {
+    let now = 1_000;
     const signMessage = vi.fn(async () => "mca-signature");
     const request: McaQuoteRequest = {
       flow: "withdraw",
@@ -346,6 +347,7 @@ describe("McaSwapService", () => {
     const client = new SwapClient({
       baseUrl: "https://swap.example",
       fetch,
+      now: () => now,
       executors: [
         createEvmSignerExecutor({
           getIdentityKey: async () => "0xAbC",
@@ -357,12 +359,14 @@ describe("McaSwapService", () => {
     const waitForOrder = vi.spyOn(client, "waitForOrder");
 
     const quote = await client.quote(request);
-    await expect(client.buildSwap({ quote })).rejects.toMatchObject({
+    now = 1_000_000;
+    const oldQuote = { ...quote, expiresAt: 2_000 };
+    await expect(client.buildSwap({ quote: oldQuote })).rejects.toMatchObject({
       code: "INVALID_REQUEST",
       stage: "build",
     });
     const result = await client.swap({
-      quote,
+      quote: oldQuote,
       beforeSign,
       waitFor: "completed",
       orderPolling: { intervalMs: 333, timeoutMs: 444 },
@@ -544,68 +548,6 @@ describe("McaSwapService", () => {
     expect(page.items.map((item) => item.id)).toEqual(["1", "2"]);
     expect(page.filteredLocally).toBeUndefined();
     expect(page.totalItems).toBe(2);
-  });
-
-  it("rejects a stale relayer quote before requesting a signature", async () => {
-    let now = 1_000;
-    const signMessage = vi.fn(async () => "signature");
-    const request: McaQuoteRequest = {
-      flow: "withdraw",
-      mcaAccountId: "mca.near",
-      fromChain: "near",
-      toChain: "1",
-      tokenIn: { chain: "near", address: "usdc.near" },
-      tokenOut: { chain: "1", address: "0xusdc" },
-      amountIn: "100",
-      slippageBps: 50,
-      sender: "mca.near",
-      recipient: "0xrecipient",
-      signerChain: "evm",
-      collateral: {
-        needDecrease: false,
-        decreaseAmountBurrow: "0",
-      },
-      executionPreference: "relayer",
-    };
-    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
-      response({
-        isCrossChain: true,
-        chainType: "cross-chain",
-        bestQuote: {
-          router: "near-mca-withdraw",
-          amountOut: "99",
-          minAmountOut: "98",
-        },
-        allQuotes: [],
-        mcaWithdrawToIntents: {
-          business: { action: "withdraw" },
-          messageToSign: "message",
-          depositAddress: "deposit-address",
-        },
-      })
-    );
-    const client = new SwapClient({
-      baseUrl: "https://swap.example",
-      fetch,
-      now: () => now,
-      maxQuoteAgeMs: 30_000,
-      reportMode: "disabled",
-      executors: [
-        createEvmSignerExecutor({
-          getIdentityKey: async () => "0xabc",
-          signMessage,
-        }),
-      ],
-    });
-    const quote = await client.quote(request);
-    now = 31_001;
-
-    await expect(client.swap({ quote })).rejects.toMatchObject({
-      code: "QUOTE_EXPIRED",
-      stage: "build",
-    });
-    expect(signMessage).not.toHaveBeenCalled();
-    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it("does not broadcast a completed NEAR withdraw without a status key", async () => {

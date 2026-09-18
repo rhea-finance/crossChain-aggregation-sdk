@@ -314,7 +314,7 @@ const quoteRequest: QuoteRequest = {
 const quote = await client.quote(quoteRequest);
 ```
 
-`quote()` calls `POST /api/swap/quote`. The frontend can configure the Near Intents wait plus the same-chain and cross-chain route timeouts on every `QuoteRequest`. The SDK sends the defaults shown above when fields are omitted.
+`quote()` calls `POST /api/v2/swap/quote`. The frontend can configure the Near Intents wait plus the same-chain and cross-chain route timeouts on every `QuoteRequest`. The SDK sends the defaults shown above when fields are omitted.
 
 Set `confidentiality: "basic"` to use the confidential 1Click route. The SDK preserves it through quote and build, and includes it in automatic or manual report payloads. Omit the field for public swaps:
 
@@ -345,7 +345,7 @@ const quote = await client.quote({
 | `sameChainTimeoutMs` | `500` | Timeout budget supplied to same-chain quote routing. |
 | `crossChainTimeoutMs` | `3000` | Timeout budget supplied to cross-chain quote routing. |
 
-All three values use milliseconds and must be non-negative integers. They affect only `POST /api/swap/quote`; the SDK removes them from the subsequent build request. They do **not** control the SDK HTTP timeout, wallet signing, source-chain confirmation, bridge settlement, or order polling. Keep the client's `timeoutMs` above the configured quote budget plus network overhead.
+All three values use milliseconds and must be non-negative integers. They affect only `POST /api/v2/swap/quote`; the SDK removes them from the subsequent build request. They do **not** control the SDK HTTP timeout, wallet signing, source-chain confirmation, bridge settlement, or order polling. Keep the client's `timeoutMs` above the configured quote budget plus network overhead.
 
 ### 3.4 Execute the swap directly
 
@@ -431,7 +431,6 @@ Terminal statuses are `completed`, `failed`, `refunded`, and `expired`.
 | `retry` | `Partial<RetryConfig>` | No | Retry policy for retryable quote/read operations. Defaults: 2 retries, 250ms base delay, 2000ms maximum delay, and jitter enabled. |
 | `logger` | `SdkLogger` | No | Receives structured `api.request`, `api.response`, and `api.retry` entries. |
 | `executors` | `readonly ChainExecutor[]` | Required for execution | Wallet executors. May be omitted when only calling `quote()` or `buildSwap()`. |
-| `maxQuoteAgeMs` | `number \| null` | No | Maximum local quote age in milliseconds. Default: `30000`. Set to `null` to disable the local age check; an API-provided `expiresAt` still applies. |
 | `tokenListCacheTtlMs` | `number` | No | Successful token-list cache lifetime in milliseconds. Default: `600000` (10 minutes). Set to `0` to disable. |
 | `reportMode` | `"auto" \| "manual" \| "disabled"` | No | Reporting policy. Default: `"auto"`. A reporting failure does not turn a submitted swap into a failed swap. |
 | `onEvent` | `(event) => void` | No | Receives all lifecycle events. |
@@ -753,7 +752,7 @@ try {
 }
 ```
 
-Common `stage` values are `quote`, `build`, `approve`, `sign`, `broadcast`, `submit`, `report`, `status`, and `history`. Common `code` values include `QUOTE_EXPIRED`, `USER_REJECTED`, `APPROVAL_FAILED`, `SIGNING_FAILED`, `BROADCAST_FAILED`, and `ORDER_TIMEOUT`.
+Common `stage` values are `quote`, `build`, `approve`, `sign`, `broadcast`, `submit`, `report`, `status`, and `history`. Common `code` values include `USER_REJECTED`, `APPROVAL_FAILED`, `SIGNING_FAILED`, `BROADCAST_FAILED`, and `ORDER_TIMEOUT`.
 
 Pass an `AbortSignal` to stop an unfinished request or wait:
 
