@@ -385,6 +385,23 @@ describe("ApiClient", () => {
     }
   });
 
+  it("queries order status by report record id", async () => {
+    const fetch = vi.fn(async () =>
+      jsonResponse({ code: 0, msg: "ok", data: { status: "SUCCESS" } })
+    );
+    const client = new ApiClient({
+      baseUrl: "https://swap.example",
+      fetch: fetch as typeof globalThis.fetch,
+    });
+
+    await client.getOrderStatus({ recordId: 15 });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "https://swap.example/api/swap/order-status?recordId=15",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
   it("does not send or retry an already-aborted request", async () => {
     const controller = new AbortController();
     controller.abort("cancelled");

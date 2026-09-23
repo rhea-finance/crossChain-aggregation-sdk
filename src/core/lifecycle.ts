@@ -64,6 +64,8 @@ export interface SwapExecutionResult {
   depositAddress?: string;
   report?: {
     status: "reported" | "failed" | "skipped";
+    /** Report row id from POST /api/swap/report; preferred for order-status polling. */
+    recordId?: string;
     warning?: SwapWarning;
   };
   raw: unknown;
@@ -91,8 +93,10 @@ export interface SwapInput extends Omit<ExecuteSwapInput, "build"> {
 }
 
 export interface OrderStatusResult {
-  orderId: string;
-  router: string;
+  recordId?: string;
+  orderId?: string;
+  txHash?: string;
+  router?: string;
   status: OrderStatus;
   raw: SwapOrderStatusDataRaw;
 }

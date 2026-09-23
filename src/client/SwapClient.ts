@@ -49,8 +49,15 @@ import type {
   McaSwapInput,
   McaSwapResult,
 } from "../mca/types";
-import type { SwapBuild } from "../types/execution";
-import type { HistoryRequest, SwapHistoryPage } from "../types/history";
+import type { OrderReference, SwapBuild } from "../types/execution";
+import type { HistoryRequest, SwapHistoryItem, SwapHistoryPage } from "../types/history";
+import {
+  assertOrderStatusParams,
+  orderStatusParamsFromHistoryItem,
+  resolveOrderStatusLookup,
+  resolveSwapReportRecordId,
+  shouldPollSwapOrderStatus,
+} from "../utils/orderStatus";
 import type { Quote, QuoteRequest } from "../types/quote";
 import type {
   SwapTokenListItem,
@@ -278,8 +285,6 @@ export class SwapClient {
       emit({ type: "signing-requested", executionId: build.executionId });
       const chainResult = await executor.execute(build.execution, context);
       let orderId = chainResult.orderId ?? build.order?.orderId;
-      let orderRouter = build.order?.router;
-      let orderChainId = build.order?.chainId;
 
       if (chainResult.signature) {
         if (build.execution.kind !== "evm-signature") {
@@ -311,10 +316,6 @@ export class SwapClient {
           { signal: input.signal }
         );
         orderId = submitted.orderId;
-        orderRouter = readNonEmptyString(submitted.router) ?? submitRouter;
-        orderChainId = String(
-          submitted.chainId ?? build.execution.request.chainId
-        );
       }
 
       const result: SwapExecutionResult = {
@@ -344,14 +345,34 @@ export class SwapClient {
         });
       }
 
+      const waitMode = input.waitFor ?? "submitted";
+      const requiresTrackedStatus =
+        build.isCrossChain || build.request?.confidentiality === "basic";
+
       const reportRequest = this.createReportRequest(build, result);
       if (reportRequest) {
         this.reportRequests.set(build.executionId, reportRequest);
       }
-      if (this.reportMode === "auto" && reportRequest) {
+      const mustReportForStatus =
+        requiresTrackedStatus &&
+        waitMode !== "submitted" &&
+        Boolean(reportRequest);
+      const shouldReportNow =
+        Boolean(reportRequest) &&
+        this.reportMode !== "disabled" &&
+        (this.reportMode === "auto" || mustReportForStatus);
+
+      let reportRecordId: string | undefined;
+      if (shouldReportNow && reportRequest) {
         try {
-          await this.api.report(reportRequest, { signal: input.signal });
-          result.report = { status: "reported" };
+          const reportData = await this.api.report(reportRequest, {
+            signal: input.signal,
+          });
+          reportRecordId = resolveSwapReportRecordId(reportData) || undefined;
+          result.report = {
+            status: "reported",
+            ...(reportRecordId ? { recordId: reportRecordId } : {}),
+          };
         } catch (error) {
           const warning: SwapWarning = {
             code: "REPORT_FAILED",
@@ -362,31 +383,33 @@ export class SwapClient {
           emit({ type: "warning", executionId: build.executionId, warning });
         }
       }
-
-      const waitsForCompletion =
-        (input.waitFor ?? "submitted") === "completed";
-      const requiresOrderStatus =
-        build.isCrossChain || build.request?.confidentiality === "basic";
-      if (waitsForCompletion && requiresOrderStatus && !orderId) {
+      const shouldPollOrderStatus = shouldPollSwapOrderStatus({
+        waitFor: waitMode,
+        isCrossChain: build.isCrossChain,
+        confidentiality: build.request?.confidentiality,
+        reportRecordId,
+      });
+      const statusLookup = resolveOrderStatusLookup({
+        recordId: reportRecordId ?? result.report?.recordId,
+        router: build.order?.router ?? build.router,
+      });
+      if (shouldPollOrderStatus && !statusLookup) {
         throw new SwapSdkError(
           "INVALID_API_RESPONSE",
           "status",
-          "Swap submitted, but the API did not provide a status key",
+          "Swap submitted, but the report response did not include an id to query",
           {
             details: {
               executionId: build.executionId,
-              ...(result.txHash ? { txHash: result.txHash } : {}),
-              router: orderRouter ?? build.router,
+              router: build.router,
             },
           }
         );
       }
 
-      if (waitsForCompletion && orderId) {
+      if (shouldPollOrderStatus && statusLookup) {
         const status = await this.waitForOrder({
-          orderId,
-          router: orderRouter ?? build.router,
-          chainId: orderChainId,
+          ...statusLookup,
           ...input.orderPolling,
           signal: input.signal,
         });
@@ -434,27 +457,32 @@ export class SwapClient {
   }
 
   async getOrderStatus(
-    input: {
-      orderId: string;
-      router: string;
-      chainId?: string;
-      signal?: AbortSignal;
-    }
+    input: OrderReference & { signal?: AbortSignal }
   ): Promise<OrderStatusResult> {
-    const raw = await this.api.getOrderStatus(
-      {
-        orderId: input.orderId,
-        router: input.router,
-        chainId: input.chainId,
-      },
-      { signal: input.signal }
-    );
+    const { signal, ...reference } = input;
+    const lookup = assertOrderStatusParams(reference);
+    const raw = await this.api.getOrderStatus(lookup, { signal });
     return {
-      orderId: input.orderId,
-      router: input.router,
+      ...lookup,
+      ...(lookup.router || input.router
+        ? { router: lookup.router ?? input.router }
+        : {}),
       status: normalizeOrderStatus(raw),
       raw,
     };
+  }
+
+  async getHistoryOrderStatus(
+    item: Pick<
+      SwapHistoryItem,
+      "id" | "orderId" | "router" | "sourceTxHash"
+    >,
+    options: { signal?: AbortSignal } = {}
+  ): Promise<OrderStatusResult> {
+    return this.getOrderStatus({
+      ...orderStatusParamsFromHistoryItem(item),
+      signal: options.signal,
+    });
   }
 
   async waitForOrder(input: WaitForOrderInput): Promise<OrderStatusResult> {
@@ -517,7 +545,7 @@ export class SwapClient {
     return this.api.report(request, options);
   }
 
-  report(result: SwapExecutionResult): Promise<SwapReportDataRaw> {
+  async report(result: SwapExecutionResult): Promise<SwapReportDataRaw> {
     const managedReport = this.managedSwapFlow.reportIfManaged(result);
     if (managedReport) return managedReport;
     const request = this.reportRequests.get(result.executionId);
@@ -528,7 +556,13 @@ export class SwapClient {
         `No report context for execution ${result.executionId}`
       );
     }
-    return this.api.report(request);
+    const raw = await this.api.report(request);
+    const recordId = resolveSwapReportRecordId(raw) || undefined;
+    result.report = {
+      status: "reported",
+      ...(recordId ? { recordId } : {}),
+    };
+    return raw;
   }
 
   retryReport(result: SwapExecutionResult): Promise<SwapReportDataRaw> {

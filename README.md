@@ -382,7 +382,7 @@ if (result.status === "completed") {
 }
 ```
 
-`"completed"` polls the order-status API whenever the swap has a queryable order reference. Confidential swaps also require order-status polling when they are same-chain. For confidential Near Intents builds, the SDK uses `deposit.orderId` when present and otherwise uses `deposit.depositAddress` as the status key. If a cross-chain or confidential swap does not provide a usable status key, the SDK throws `INVALID_API_RESPONSE` at the `status` stage instead of treating source-chain confirmation as completion.
+After `POST /api/swap/report` returns an `id`, the SDK polls `GET /api/swap/order-status?recordId=<report id>&router=<swap router>`. The router comes from the swap response. The SDK does not query by source `txHash`. Confidential swaps also require order-status polling when they are same-chain. For confidential Near Intents builds, the SDK uses `deposit.orderId` when present and otherwise uses `deposit.depositAddress` as the status key. If a cross-chain or confidential swap provides none of these identifiers, the SDK throws `INVALID_API_RESPONSE` at the `status` stage instead of treating source-chain confirmation as completion.
 
 The default polling interval is 5 seconds. There is no default polling timeout, so polling continues until the order reaches a terminal state or the supplied `AbortSignal` is aborted.
 
@@ -390,28 +390,41 @@ Set `orderPolling.timeoutMs` only when the application needs a time limit. An ex
 
 ### 3.5 Check final delivery status
 
-If the swap first returns with `"submitted"`, use the returned `orderId` to poll manually:
+If the swap first returns with `"submitted"`, poll manually with the report record id when available:
 
 ```ts
-if (result.orderId) {
+if (result.report?.recordId) {
+  const finalStatus = await client.waitForOrder({
+    recordId: result.report.recordId,
+    intervalMs: 5000,
+    timeoutMs: 600000,
+  });
+  console.log(finalStatus.status);
+} else if (result.orderId) {
   const finalStatus = await client.waitForOrder({
     orderId: result.orderId,
     router: result.router,
     intervalMs: 5000,
     timeoutMs: 600000,
   });
-
   console.log(finalStatus.status);
 }
+```
+
+For history rows, refresh delivery status with the same record id:
+
+```ts
+const status = await client.getHistoryOrderStatus(historyItem);
 ```
 
 For a single status request:
 
 ```ts
-const status = await client.getOrderStatus({
-  orderId: result.orderId!,
-  router: result.router,
-});
+const status = await client.getOrderStatus(
+  result.report?.recordId
+    ? { recordId: result.report.recordId }
+    : { orderId: result.orderId!, router: result.router }
+);
 ```
 
 Terminal statuses are `completed`, `failed`, `refunded`, and `expired`.
@@ -484,7 +497,7 @@ Important normalized quote fields:
 | --- | --- | --- | --- |
 | `quote` | `Quote` | Yes | The value returned by `client.quote()`. Pass it directly without modification. |
 | `waitFor` | `"submitted" \| "source-confirmed" \| "completed"` | No | Default: `"submitted"`. |
-| `orderPolling` | `OrderPollingOptions` | No | Used with `waitFor: "completed"`. `intervalMs` defaults to `5000`; omit `timeoutMs` to poll indefinitely. |
+| `orderPolling` | `OrderPollingOptions` | No | Used when cross-chain or confidential swaps poll order status (`waitFor: "source-confirmed"` or `"completed"`). `intervalMs` defaults to `5000`; omit `timeoutMs` to poll indefinitely. |
 | `signal` | `AbortSignal` | No | Cancels unfinished SDK requests or waits. It cannot withdraw an already broadcast transaction. |
 | `onEvent` | `(event) => void` | No | Receives lifecycle events for this swap only. |
 | `beforeSign` | `(preview) => void \| Promise<void>` | No | Called before each wallet signature or transaction request. It can be used for application confirmation UI. |
@@ -495,8 +508,8 @@ Wait modes:
 | Mode | Return condition |
 | --- | --- |
 | `submitted` | Returns after the wallet signs or broadcasts the source action. |
-| `source-confirmed` | Calls the required wallet confirmation method and returns only when it reports `confirmed`. A `failed` or malformed status throws `BROADCAST_FAILED`. |
-| `completed` | After source execution, polls the server until a delivery terminal state. Same-chain confidential swaps are included. A cross-chain or confidential swap without a usable status key fails at the `status` stage instead of being reported as completed. |
+| `source-confirmed` | Waits for source-chain confirmation, then reports and polls `/api/swap/order-status` (preferring the report `recordId`) for cross-chain and confidential swaps. A `failed` or malformed source confirmation throws `BROADCAST_FAILED`. |
+| `completed` | Same delivery polling as `source-confirmed`, but also waits through any required source confirmation first. Same-chain confidential swaps are included. A cross-chain or confidential swap without a usable status key fails at the `status` stage instead of being reported as completed. |
 
 `waitForOrder()` accepts the same polling values directly:
 
@@ -802,7 +815,7 @@ await client.verifyHistoryAuthChallenge(rawVerifyRequest);
 await client.getHistoryRaw(rawHistoryRequest);
 ```
 
-The default reporting mode is `reportMode: "auto"`. If a swap succeeds but reporting fails, `result.report.status` is `"failed"` and a warning is emitted. The SDK does not throw a misleading swap failure. For manual reporting:
+The default reporting mode is `reportMode: "auto"`. If a swap succeeds but reporting fails, `result.report.status` is `"failed"` and a warning is emitted. The SDK does not throw a misleading swap failure. When `waitFor: "completed"` requires order-status polling, the SDK still calls `POST /api/swap/report` first (even in `reportMode: "manual"`) so it can query status by the returned record id. For other manual reporting flows:
 
 ```ts
 const client = new SwapClient({

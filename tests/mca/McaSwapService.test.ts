@@ -90,7 +90,8 @@ describe("McaSwapService", () => {
       .fn<typeof globalThis.fetch>()
       .mockResolvedValueOnce(response(quoteRaw))
       .mockResolvedValueOnce(response(buildRaw))
-      .mockResolvedValueOnce(response({ id: 1, from_hash: "btc-hash" }));
+      .mockResolvedValueOnce(response({ id: 1, from_hash: "btc-hash" }))
+      .mockResolvedValueOnce(response({ status: "SUCCESS" }));
     const client = new SwapClient({
       baseUrl: "https://swap.example",
       executors: [executor],
@@ -106,10 +107,13 @@ describe("McaSwapService", () => {
       identityKey: "btc-public-key",
     });
     expect(result).toMatchObject({
-      status: "submitted",
+      status: "completed",
       txHash: "btc-hash",
-      report: { status: "reported" },
+      report: { status: "reported", recordId: "1" },
     });
+    expect(String(fetch.mock.calls[3]?.[0])).toBe(
+      "https://swap.example/api/swap/order-status?recordId=1&router=near-mca-deposit"
+    );
     expect(executor.execute).toHaveBeenCalledTimes(1);
     expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toMatchObject({
       router: "near-mca-deposit",
@@ -244,11 +248,13 @@ describe("McaSwapService", () => {
       deposit_address: "near-deposit-address",
       confidentiality: "basic",
     });
-    expect(String(fetch.mock.calls[2]?.[0])).toContain(
-      "orderId=near-deposit-address"
+    expect(String(fetch.mock.calls[2]?.[0])).toBe(
+      "https://swap.example/api/swap/order-status?recordId=2&router=near-mca-withdraw"
     );
     expect(waitForOrder).toHaveBeenCalledWith(
       expect.objectContaining({
+        recordId: "2",
+        router: "near-mca-withdraw",
         intervalMs: 111,
         timeoutMs: 222,
       })
@@ -257,7 +263,6 @@ describe("McaSwapService", () => {
     expect(events).toEqual([
       "signing-requested",
       "submitted",
-      "order-status",
       "completed",
     ]);
   });
@@ -408,8 +413,8 @@ describe("McaSwapService", () => {
       swapId: "relayer-order-1",
       confidentiality: "basic",
     });
-    expect(String(fetch.mock.calls[3]?.[0])).toContain(
-      "orderId=relayer-order-1"
+    expect(String(fetch.mock.calls[3]?.[0])).toBe(
+      "https://swap.example/api/swap/order-status?recordId=3&router=near-mca-withdraw"
     );
     expect(waitForOrder).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -421,7 +426,7 @@ describe("McaSwapService", () => {
       orderId: "relayer-order-1",
       depositAddress: "intents-deposit-address",
       status: "completed",
-      report: { status: "reported" },
+      report: { status: "reported", recordId: "3" },
     });
     await expect(client.report(result)).resolves.toMatchObject({
       from_hash: "relayer-order-1",

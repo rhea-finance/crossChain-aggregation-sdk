@@ -21,4 +21,5 @@ export * from "./types/execution";
 export * from "./types/history";
 export * from "./types/quote";
 export * from "./types/tokens";
+export * from "./utils/orderStatus";
 export * from "./utils/units";

@@ -41,9 +41,13 @@ export interface NearTransaction {
 }
 
 export interface OrderReference {
+  /** Preferred status identifier returned by POST /api/swap/report. */
+  recordId?: string;
   /** Status-query key. Usually an order ID; confidential Near Intents may use the deposit address. */
-  orderId: string;
-  router: string;
+  orderId?: string;
+  /** Source-chain transaction hash when no order id is available. */
+  txHash?: string;
+  router?: string;
   chainId?: string;
 }
 

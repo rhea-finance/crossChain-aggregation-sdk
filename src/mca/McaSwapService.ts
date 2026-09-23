@@ -9,6 +9,10 @@ import type {
   SwapLifecycleEvent,
   SwapWarning,
 } from "../core/lifecycle";
+import {
+  resolveOrderStatusLookup,
+  resolveSwapReportRecordId,
+} from "../utils/orderStatus";
 import type {
   ExecutorIdentityProvider,
   ExecutorMessageSigner,
@@ -148,7 +152,7 @@ export class McaSwapService {
         "MCA NEAR withdraw is missing a status deposit address"
       );
     }
-    const result = await this.client.executeSwap({
+    return this.client.executeSwap({
       build,
       waitFor:
         input.quote.executionMode === "withdraw-near" &&
@@ -159,36 +163,6 @@ export class McaSwapService {
       signal: input.signal,
       onEvent: input.onEvent,
     });
-    if (
-      input.quote.executionMode === "withdraw-near" &&
-      input.waitFor === "completed"
-    ) {
-      const status = await this.client.waitForOrder({
-        orderId: nearStatusKey!,
-        router: input.quote.route.router,
-        ...input.orderPolling,
-        signal: input.signal,
-      });
-      this.emitEvent(
-        {
-          type: "order-status",
-          executionId: result.executionId,
-          status: status.status,
-        },
-        input.onEvent
-      );
-      result.status =
-        status.status === "unknown" || status.status === "pending"
-          ? "processing"
-          : status.status;
-      if (status.status === "completed") {
-        this.emitEvent(
-          { type: "completed", executionId: result.executionId },
-          input.onEvent
-        );
-      }
-    }
-    return result;
   }
 
   reportIfManaged(
@@ -422,10 +396,22 @@ export class McaSwapService {
       };
       emit({ type: "submitted", executionId, orderId });
 
-      if (this.reportMode === "auto") {
+      const mustReportForStatus = input.waitFor === "completed";
+      const shouldReportNow =
+        this.reportMode !== "disabled" &&
+        (this.reportMode === "auto" || mustReportForStatus);
+
+      let reportRecordId: string | undefined;
+      if (shouldReportNow) {
         try {
-          await this.client.reportRaw(reportRequest, { signal: input.signal });
-          result.report = { status: "reported" };
+          const reportData = await this.client.reportRaw(reportRequest, {
+            signal: input.signal,
+          });
+          reportRecordId = resolveSwapReportRecordId(reportData) || undefined;
+          result.report = {
+            status: "reported",
+            ...(reportRecordId ? { recordId: reportRecordId } : {}),
+          };
         } catch (error) {
           const warning: SwapWarning = {
             code: "REPORT_FAILED",
@@ -438,9 +424,19 @@ export class McaSwapService {
       }
 
       if (input.waitFor === "completed") {
-        const status = await this.client.waitForOrder({
-          orderId,
+        const statusLookup = resolveOrderStatusLookup({
+          recordId: reportRecordId ?? result.report?.recordId,
           router,
+        });
+        if (!statusLookup) {
+          throw new SwapSdkError(
+            "INVALID_API_RESPONSE",
+            "status",
+            "MCA withdraw was reported without an id to query"
+          );
+        }
+        const status = await this.client.waitForOrder({
+          ...statusLookup,
           ...input.orderPolling,
           signal: input.signal,
         });

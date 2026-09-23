@@ -180,8 +180,11 @@ export interface SwapOrderSubmitDataRaw {
 }
 
 export interface SwapOrderStatusParamsRaw {
-  orderId: string;
-  router: string;
+  /** Preferred status identifier returned by POST /api/swap/report. */
+  recordId?: string | number;
+  orderId?: string;
+  txHash?: string;
+  router?: string;
   chainId?: string | number;
 }
 
@@ -213,8 +216,10 @@ export interface SwapReportRequestRaw {
 }
 
 export interface SwapReportDataRaw {
-  id: number;
-  from_hash: string;
+  id?: number;
+  from_hash?: string;
+  recordId?: string | number;
+  record_id?: string | number;
 }
 
 export interface SwapHistoryParamsRaw {

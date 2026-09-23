@@ -1,5 +1,6 @@
 import { SwapSdkError, SwapErrorStage } from "../core/errors";
 import type { SdkLogEntry, SdkLogger } from "../core/logger";
+import { buildOrderStatusQuery } from "../utils/orderStatus";
 import {
   SwapApiResponse,
   SwapCrossChainToTokensDataRaw,
@@ -125,15 +126,19 @@ export class ApiClient {
     params: SwapOrderStatusParamsRaw,
     options: ApiRequestOptions = {}
   ): Promise<SwapOrderStatusDataRaw> {
+    const query = buildOrderStatusQuery(params);
+    if (!query.recordId && !query.orderId) {
+      throw new SwapSdkError(
+        "INVALID_REQUEST",
+        "status",
+        "Order status requires recordId or orderId"
+      );
+    }
     return this.request("/api/swap/order-status", "status", {
       ...options,
       method: "GET",
       retryableOperation: true,
-      query: {
-        orderId: params.orderId,
-        router: params.router,
-        chainId: params.chainId,
-      },
+      query,
     });
   }
 

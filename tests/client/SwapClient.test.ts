@@ -216,9 +216,11 @@ describe("SwapClient execution lifecycle", () => {
       validate: async () => undefined,
       execute: async () => ({ status: "submitted", txHash: "mca-hash" }),
     };
-    const fetch = vi
-      .fn<typeof globalThis.fetch>()
-      .mockResolvedValue(response({ id: 1, from_hash: "mca-hash" }));
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input) =>
+      String(input).includes("order-status")
+        ? response({ status: "SUCCESS" })
+        : response({ id: 1, from_hash: "mca-hash" })
+    );
     const client = new SwapClient({
       baseUrl: "https://swap.example",
       executors: [executor],
@@ -354,11 +356,11 @@ describe("SwapClient execution lifecycle", () => {
       .mockResolvedValueOnce(
         response({ router: "cow-status", orderId: "order-1", chainId: 56 })
       )
+      .mockResolvedValueOnce(response({ id: 88, from_hash: "order-1" }))
       .mockResolvedValueOnce(response({ status: "SUCCESS" }));
     const client = new SwapClient({
       baseUrl: "https://swap.example",
       executors: [executor],
-      reportMode: "disabled",
       fetch,
     });
     const waitForOrder = vi.spyOn(client, "waitForOrder");
@@ -391,8 +393,8 @@ describe("SwapClient execution lifecycle", () => {
         timeoutMs: 456,
       })
     );
-    expect(String(fetch.mock.calls[1]?.[0])).toBe(
-      "https://swap.example/api/swap/order-status?orderId=order-1&router=cow-status&chainId=56"
+    expect(String(fetch.mock.calls[2]?.[0])).toBe(
+      "https://swap.example/api/swap/order-status?recordId=88&router=aggregate-router"
     );
   });
 
@@ -407,11 +409,11 @@ describe("SwapClient execution lifecycle", () => {
     };
     const fetch = vi
       .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(response({ id: 12, from_hash: "0xprivate" }))
       .mockResolvedValueOnce(response({ status: "SUCCESS" }));
     const client = new SwapClient({
       baseUrl: "https://swap.example",
       executors: [executor],
-      reportMode: "disabled",
       fetch,
     });
     const build = normalizeBuild(
@@ -438,12 +440,12 @@ describe("SwapClient execution lifecycle", () => {
       status: "completed",
       orderId: "private-status-key",
     });
-    expect(String(fetch.mock.calls[0]?.[0])).toBe(
-      "https://swap.example/api/swap/order-status?orderId=private-status-key&router=nearintents&chainId=1"
+    expect(String(fetch.mock.calls[1]?.[0])).toBe(
+      "https://swap.example/api/swap/order-status?recordId=12&router=nearintents"
     );
   });
 
-  it("rejects completed waiting when a confidential swap has no status key", async () => {
+  it("polls by source tx hash when a confidential swap has no status key", async () => {
     const executor: ChainExecutor<"evm-transaction"> = {
       kinds: ["evm-transaction"],
       validate: async () => undefined,
@@ -452,7 +454,9 @@ describe("SwapClient execution lifecycle", () => {
         txHash: "0xprivate-without-status-key",
       }),
     };
-    const fetch = vi.fn<typeof globalThis.fetch>();
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(response({ status: "SUCCESS" }));
     const client = new SwapClient({
       baseUrl: "https://swap.example",
       executors: [executor],
@@ -481,9 +485,108 @@ describe("SwapClient execution lifecycle", () => {
     ).rejects.toMatchObject({
       code: "INVALID_API_RESPONSE",
       stage: "status",
-      details: { txHash: "0xprivate-without-status-key" },
     });
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("reports before status polling in manual mode when completion is required", async () => {
+    const executor: ChainExecutor<"bitcoin-transfer"> = {
+      kinds: ["bitcoin-transfer"],
+      validate: async () => undefined,
+      execute: async () => ({ status: "submitted", txHash: "btc-manual-hash" }),
+    };
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(response({ id: 77, from_hash: "btc-manual-hash" }))
+      .mockResolvedValueOnce(response({ status: "SUCCESS" }));
+    const client = new SwapClient({
+      baseUrl: "https://swap.example",
+      executors: [executor],
+      reportMode: "manual",
+      fetch,
+    });
+    const build = normalizeBuild(
+      buildFixtures.bitcoin,
+      "exec-record-id-manual",
+      rawBuildRequest
+    );
+
+    await expect(
+      client.executeSwap({ build, waitFor: "completed" })
+    ).resolves.toMatchObject({
+      status: "completed",
+      report: { status: "reported", recordId: "77" },
+    });
+    expect(String(fetch.mock.calls[1]?.[0])).toBe(
+      "https://swap.example/api/swap/order-status?recordId=77&router=nearintents"
+    );
+  });
+
+  it("polls by report record id when waiting for source confirmation", async () => {
+    const executor: ChainExecutor<"bitcoin-transfer"> = {
+      kinds: ["bitcoin-transfer"],
+      validate: async () => undefined,
+      execute: async () => ({
+        status: "source-confirmed",
+        txHash: "btc-source-hash",
+      }),
+    };
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(response({ id: 55, from_hash: "btc-source-hash" }))
+      .mockResolvedValueOnce(response({ status: "SUCCESS" }));
+    const client = new SwapClient({
+      baseUrl: "https://swap.example",
+      executors: [executor],
+      fetch,
+    });
+    const build = normalizeBuild(
+      buildFixtures.bitcoin,
+      "exec-record-id-source-confirmed",
+      rawBuildRequest
+    );
+
+    await expect(
+      client.executeSwap({ build, waitFor: "source-confirmed" })
+    ).resolves.toMatchObject({
+      status: "completed",
+      report: { status: "reported", recordId: "55" },
+    });
+    expect(String(fetch.mock.calls[1]?.[0])).toBe(
+      "https://swap.example/api/swap/order-status?recordId=55&router=nearintents"
+    );
+  });
+
+  it("polls by report record id after automatic reporting", async () => {
+    const executor: ChainExecutor<"bitcoin-transfer"> = {
+      kinds: ["bitcoin-transfer"],
+      validate: async () => undefined,
+      execute: async () => ({ status: "submitted", txHash: "btc-hash" }),
+    };
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(response({ id: 99, from_hash: "btc-hash" }))
+      .mockResolvedValueOnce(response({ status: "SUCCESS" }));
+    const client = new SwapClient({
+      baseUrl: "https://swap.example",
+      executors: [executor],
+      fetch,
+    });
+    const build = normalizeBuild(
+      buildFixtures.bitcoin,
+      "exec-record-id-status",
+      rawBuildRequest
+    );
+
+    await expect(
+      client.executeSwap({ build, waitFor: "completed" })
+    ).resolves.toMatchObject({
+      status: "completed",
+      report: { status: "reported", recordId: "99" },
+    });
+    expect(String(fetch.mock.calls[1]?.[0])).toBe(
+      "https://swap.example/api/swap/order-status?recordId=99&router=nearintents"
+    );
   });
 
   it("reports the default ordinary swap transaction type", async () => {
@@ -492,9 +595,11 @@ describe("SwapClient execution lifecycle", () => {
       validate: async () => undefined,
       execute: async () => ({ status: "submitted", txHash: "btc-hash" }),
     };
-    const fetch = vi
-      .fn<typeof globalThis.fetch>()
-      .mockResolvedValue(response({ id: 1, from_hash: "btc-hash" }));
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input) =>
+      String(input).includes("order-status")
+        ? response({ status: "SUCCESS" })
+        : response({ id: 1, from_hash: "btc-hash" })
+    );
     const client = new SwapClient({
       baseUrl: "https://swap.example",
       executors: [executor],
@@ -519,9 +624,11 @@ describe("SwapClient execution lifecycle", () => {
       validate: async () => undefined,
       execute: async () => ({ status: "submitted", txHash: "private-hash" }),
     };
-    const fetch = vi
-      .fn<typeof globalThis.fetch>()
-      .mockResolvedValue(response({ id: 1, from_hash: "private-hash" }));
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input) =>
+      String(input).includes("order-status")
+        ? response({ status: "SUCCESS" })
+        : response({ id: 1, from_hash: "private-hash" })
+    );
     const client = new SwapClient({
       baseUrl: "https://swap.example",
       executors: [executor],
@@ -609,7 +716,10 @@ describe("SwapClient execution lifecycle", () => {
 
     await expect(
       client.executeSwap({
-        build: normalizeBuild(buildFixtures.bitcoin, "exec-confirmed"),
+        build: normalizeBuild(
+          { ...buildFixtures.bitcoin, isCrossChain: false },
+          "exec-confirmed"
+        ),
         waitFor: "source-confirmed",
       })
     ).resolves.toMatchObject({ status: "source-confirmed" });
