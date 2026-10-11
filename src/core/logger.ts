@@ -4,10 +4,9 @@ export type SdkLogLevel = "debug" | "warn";
 
 export interface SdkLogEntry {
   level: SdkLogLevel;
-  event: "api.request" | "api.response" | "api.retry";
+  event: "api.request" | "api.response";
   path: string;
   stage: SwapErrorStage;
-  attempt: number;
   status?: number;
   durationMs?: number;
   code?: SwapErrorCode;

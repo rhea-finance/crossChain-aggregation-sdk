@@ -56,7 +56,6 @@ describe("ApiClient", () => {
     const client = new ApiClient({
       baseUrl: "https://swap.example",
       fetch,
-      retry: { maxRetries: 0 },
     });
 
     try {
@@ -77,7 +76,6 @@ describe("ApiClient", () => {
     const client = new ApiClient({
       baseUrl: "https://swap.example",
       fetch: fetch as typeof globalThis.fetch,
-      retry: { baseDelayMs: 0, jitter: false },
     });
 
     await expect(client.quote({} as never)).rejects.toMatchObject({
@@ -94,7 +92,6 @@ describe("ApiClient", () => {
     const client = new ApiClient({
       baseUrl: "https://swap.example",
       fetch: fetch as typeof globalThis.fetch,
-      retry: { maxRetries: 0 },
     });
 
     await expect(client.quote({} as never)).rejects.toMatchObject({
@@ -164,29 +161,25 @@ describe("ApiClient", () => {
     });
   });
 
-  it("retries a quote twice after retryable network failures", async () => {
+  it("fails a quote on the first retryable network error", async () => {
     const consoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
     const fetch = vi
       .fn<typeof globalThis.fetch>()
-      .mockRejectedValueOnce(new Error("offline"))
-      .mockRejectedValueOnce(new Error("offline"))
-      .mockResolvedValueOnce(
-        jsonResponse({ code: 0, msg: "ok", data: { bestQuote: {} } })
-      );
+      .mockRejectedValue(new Error("offline"));
     const client = new ApiClient({
       baseUrl: "https://swap.example",
       fetch,
-      retry: { baseDelayMs: 0, jitter: false },
     });
 
     try {
-      await expect(client.quote({} as never)).resolves.toEqual({
-        bestQuote: {},
+      await expect(client.quote({} as never)).rejects.toMatchObject({
+        code: "HTTP_ERROR",
+        stage: "quote",
       });
-      expect(fetch).toHaveBeenCalledTimes(3);
-      expect(consoleError).toHaveBeenCalledTimes(2);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(consoleError).toHaveBeenCalledTimes(1);
     } finally {
       consoleError.mockRestore();
     }
@@ -204,7 +197,6 @@ describe("ApiClient", () => {
       baseUrl: "https://swap.example",
       apiKey: "private-api-token",
       fetch,
-      retry: { maxRetries: 0 },
     });
 
     try {
@@ -226,7 +218,6 @@ describe("ApiClient", () => {
         details: {
           method: "POST",
           path: "/api/v2/swap/quote",
-          attempt: 1,
           causeName: "TypeError",
           causeMessage:
             "Failed to fetch https://swap.example/api/v2/swap/quote?[redacted]",
@@ -239,7 +230,6 @@ describe("ApiClient", () => {
           method: "POST",
           path: "/api/v2/swap/quote",
           stage: "quote",
-          attempt: 1,
           causeName: "TypeError",
           causeMessage:
             "Failed to fetch https://swap.example/api/v2/swap/quote?[redacted]",
@@ -256,31 +246,20 @@ describe("ApiClient", () => {
     }
   });
 
-  it("retries history after rate limiting", async () => {
+  it("surfaces rate limiting without retrying", async () => {
     const fetch = vi
       .fn<typeof globalThis.fetch>()
-      .mockResolvedValueOnce(jsonResponse({ msg: "slow down" }, 429))
-      .mockResolvedValueOnce(
-        jsonResponse({
-          code: 0,
-          msg: "ok",
-          data: {
-            record_list: [],
-            page_number: 1,
-            page_size: 20,
-            total_page: 0,
-            total_size: 0,
-          },
-        })
-      );
+      .mockResolvedValue(jsonResponse({ msg: "slow down" }, 429));
     const client = new ApiClient({
       baseUrl: "https://swap.example",
       fetch,
-      retry: { baseDelayMs: 0, jitter: false },
     });
 
-    await client.getHistory({ sender: "alice" });
-    expect(fetch).toHaveBeenCalledTimes(2);
+    await expect(client.getHistory({ sender: "alice" })).rejects.toMatchObject({
+      code: "RATE_LIMITED",
+      retryable: true,
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it("never retries a build automatically", async () => {
@@ -290,7 +269,6 @@ describe("ApiClient", () => {
     const client = new ApiClient({
       baseUrl: "https://swap.example",
       fetch,
-      retry: { baseDelayMs: 0, jitter: false },
     });
 
     await expect(client.build({} as never)).rejects.toMatchObject({
@@ -336,53 +314,30 @@ describe("ApiClient", () => {
     expect(logs).not.toContain("build-exec-1");
   });
 
-  it("logs retry metadata without request payloads", async () => {
+  it("logs request metadata without request payloads", async () => {
     const logger: SdkLogger = { log: vi.fn() };
-    const consoleError = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
-    const fetch = vi
-      .fn<typeof globalThis.fetch>()
-      .mockRejectedValueOnce(new Error("offline"))
-      .mockResolvedValueOnce(
-        jsonResponse({ code: 0, msg: "ok", data: { bestQuote: {} } })
-      );
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+      jsonResponse({ code: 0, msg: "ok", data: { bestQuote: {} } })
+    );
     const client = new ApiClient({
       baseUrl: "https://swap.example",
       fetch,
       logger,
-      retry: { baseDelayMs: 0, jitter: false },
     });
 
-    try {
-      await client.quote({ sender: "private-sender" } as never);
+    await client.quote({ sender: "private-sender" } as never);
 
-      expect(logger.log).toHaveBeenCalledWith(
-        expect.objectContaining({
-          level: "warn",
-          event: "api.retry",
-          stage: "quote",
-          attempt: 1,
-          code: "HTTP_ERROR",
-        })
-      );
-      expect(consoleError).toHaveBeenCalledWith(
-        "SDK network request failed",
-        expect.objectContaining({
-          method: "POST",
-          path: "/api/v2/swap/quote",
-          stage: "quote",
-          attempt: 1,
-          causeName: "Error",
-          causeMessage: "offline",
-        })
-      );
-      expect(JSON.stringify(vi.mocked(logger.log).mock.calls)).not.toContain(
-        "private-sender"
-      );
-    } finally {
-      consoleError.mockRestore();
-    }
+    expect(logger.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        level: "debug",
+        event: "api.request",
+        stage: "quote",
+        path: "/api/v2/swap/quote",
+      })
+    );
+    expect(JSON.stringify(vi.mocked(logger.log).mock.calls)).not.toContain(
+      "private-sender"
+    );
   });
 
   it("queries order status by report record id", async () => {
@@ -402,14 +357,13 @@ describe("ApiClient", () => {
     );
   });
 
-  it("does not send or retry an already-aborted request", async () => {
+  it("does not send an already-aborted request", async () => {
     const controller = new AbortController();
     controller.abort("cancelled");
     const fetch = vi.fn<typeof globalThis.fetch>();
     const client = new ApiClient({
       baseUrl: "https://swap.example",
       fetch,
-      retry: { baseDelayMs: 0, jitter: false },
     });
 
     await expect(
@@ -418,7 +372,7 @@ describe("ApiClient", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("retries read timeouts and preserves the timeout error", async () => {
+  it("fails once on read timeouts and preserves the timeout error", async () => {
     vi.useFakeTimers();
     try {
       const fetch = vi.fn<typeof globalThis.fetch>((_input, init) =>
@@ -434,7 +388,6 @@ describe("ApiClient", () => {
         baseUrl: "https://swap.example",
         fetch,
         timeoutMs: 10,
-        retry: { baseDelayMs: 0, jitter: false },
       });
       const result = client.getOrderStatus({
         orderId: "order-timeout",
@@ -447,7 +400,7 @@ describe("ApiClient", () => {
       });
       await vi.runAllTimersAsync();
       await assertion;
-      expect(fetch).toHaveBeenCalledTimes(3);
+      expect(fetch).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
     }

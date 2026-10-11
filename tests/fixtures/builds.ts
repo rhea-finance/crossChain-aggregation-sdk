@@ -100,6 +100,52 @@ export const buildFixtures = {
       standard: "native",
     },
   }),
+
+  tronRawData: baseBuild({
+    chainType: "tron",
+    fromChain: "tron",
+    needsApprove: true,
+    tx: {
+      format: "tron-raw-data",
+      txID: "ad069e0138800eeb8a8593e07f7592b302b2219e5cefe7c79f6288b628e8ea4e",
+      visible: false,
+      raw_data: {
+        contract: [
+          {
+            type: "TriggerSmartContract",
+            parameter: {
+              type_url: "type.googleapis.com/protocol.TriggerSmartContract",
+              value: {
+                owner_address: "41eb9481397c496ce332711e02de5573a54a73e79c",
+                contract_address: "41f742f4589459f0923fa579600815763d1646bec3",
+              },
+            },
+          },
+        ],
+        fee_limit: 300000000,
+      },
+      raw_data_hex: "0a02deadbeef",
+      approveTxID: "fb7df9df74de4d39337f5e91a4a6367a60b3138ee5626f912e9b6f15a6395f7d",
+      approveVisible: false,
+      approve_raw_data: {
+        contract: [
+          {
+            type: "TriggerSmartContract",
+            parameter: {
+              type_url: "type.googleapis.com/protocol.TriggerSmartContract",
+              value: {
+                owner_address: "41eb9481397c496ce332711e02de5573a54a73e79c",
+                contract_address: "41a614f803b6fd780986a42c78ec9c7f77e6ded13c",
+                data: "095ea7b3",
+              },
+            },
+          },
+        ],
+        fee_limit: 14964600,
+      },
+      approve_raw_data_hex: "0a02approve",
+    },
+  }),
   bitcoin: baseBuild({
     chainType: "btc",
     fromChain: "btc",

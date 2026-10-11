@@ -26,7 +26,6 @@ const client = new SwapClient({
   getAccessToken: () => process.env.RHEA_ACCESS_TOKEN!,
   fetch: f,
   timeoutMs: 45_000,
-  retry: { maxRetries: 0 },
 });
 
 const req = {

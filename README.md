@@ -441,8 +441,7 @@ Terminal statuses are `completed`, `failed`, `refunded`, and `expired`.
 | `fetch` | `typeof globalThis.fetch` | No | Custom fetch implementation. The SDK binds its invocation context to avoid browser `Illegal invocation` errors. It is normally required on Node.js 16. |
 | `headers` | `Record<string,string>` or function | No | Additional request headers. The function form may return a promise. |
 | `timeoutMs` | `number` | No | Timeout for each HTTP request in milliseconds. Default: `15000`. |
-| `retry` | `Partial<RetryConfig>` | No | Retry policy for retryable quote/read operations. Defaults: 2 retries, 250ms base delay, 2000ms maximum delay, and jitter enabled. |
-| `logger` | `SdkLogger` | No | Receives structured `api.request`, `api.response`, and `api.retry` entries. |
+| `logger` | `SdkLogger` | No | Receives structured `api.request` and `api.response` entries. |
 | `executors` | `readonly ChainExecutor[]` | Required for execution | Wallet executors. May be omitted when only calling `quote()` or `buildSwap()`. |
 | `tokenListCacheTtlMs` | `number` | No | Successful token-list cache lifetime in milliseconds. Default: `600000` (10 minutes). Set to `0` to disable. |
 | `reportMode` | `"auto" \| "manual" \| "disabled"` | No | Reporting policy. Default: `"auto"`. A reporting failure does not turn a submitted swap into a failed swap. |
@@ -778,18 +777,12 @@ await promise;
 
 Cancellation only stops the SDK's current work. It cannot revert an approval, signature, or transaction that has already been submitted.
 
-## 10. Retries, logging, and credentials
+## 10. Logging and credentials
 
 ```ts
 const client = new SwapClient({
   baseUrl: "https://api.rhea.finance",
   getAccessToken: async () => authStore.getToken(),
-  retry: {
-    maxRetries: 2,
-    baseDelayMs: 250,
-    maxDelayMs: 2000,
-    jitter: true,
-  },
   logger: {
     log(entry) {
       console.log("SDK API", entry);
@@ -798,7 +791,7 @@ const client = new SwapClient({
 });
 ```
 
-The SDK automatically retries only retryable quote/read operations. It does not automatically retry build, broadcast, or order-submission operations that could execute twice. Network failures preserve the underlying error name and message to help diagnose CORS failures, connection resets, timeouts, or fetch invocation problems.
+The SDK does not automatically retry HTTP requests. Callers that need retries should handle them outside the SDK. Network failures preserve the underlying error name and message to help diagnose CORS failures, connection resets, timeouts, or fetch invocation problems. Errors may still expose a `retryable` flag as guidance for application-level handling.
 
 ## 11. Raw API, reporting, and history
 

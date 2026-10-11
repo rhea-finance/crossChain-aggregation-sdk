@@ -11,6 +11,8 @@ import type {
   OrderReference,
   SwapBuild,
   SwapExecution,
+  TronApproval,
+  TronUnsignedTransaction,
 } from "../types/execution";
 import { fromApiChain } from "./chain";
 import {
@@ -92,10 +94,29 @@ const transferBaseSchema = z.object({
   depositAddress: nonEmptyStringSchema,
 });
 
-const tronTxSchema = transferBaseSchema.extend({
+const tronTransferSchema = transferBaseSchema.extend({
   tokenAddress: z.string().optional(),
   standard: z.string().optional(),
 });
+
+const tronUnsignedTxSchema = z
+  .object({
+    txID: nonEmptyStringSchema,
+    raw_data: z.record(z.string(), z.unknown()),
+    raw_data_hex: nonEmptyStringSchema,
+    visible: z.boolean().optional(),
+  })
+  .passthrough();
+
+const tronRawDataTxSchema = tronUnsignedTxSchema
+  .extend({
+    format: z.string().optional(),
+    approveTxID: z.string().optional(),
+    approve_raw_data: z.record(z.string(), z.unknown()).optional(),
+    approve_raw_data_hex: z.string().optional(),
+    approveVisible: z.boolean().optional(),
+  })
+  .passthrough();
 
 const bitcoinTxSchema = transferBaseSchema.extend({
   feeRate: z.number().positive().optional(),
@@ -214,18 +235,8 @@ function normalizeExecution(
           : [transactions],
       };
     }
-    case "tron": {
-      const tx = tronTxSchema.parse(raw.tx);
-      assertKind(tx.kind, ["tron_transfer"]);
-      return {
-        kind: "tron-transfer",
-        chain,
-        amount: tx.amount,
-        depositAddress: tx.depositAddress,
-        ...(tx.tokenAddress ? { tokenAddress: tx.tokenAddress } : {}),
-        ...(tx.standard ? { standard: tx.standard } : {}),
-      };
-    }
+    case "tron":
+      return normalizeTronExecution(raw, chain);
     case "bitcoin": {
       const tx = bitcoinTxSchema.parse(raw.tx);
       assertKind(tx.kind, ["btc_transfer", "utxo_transfer"]);
@@ -312,6 +323,109 @@ function normalizeEvmApproval(
         nonEmptyStringSchema.parse(raw.approve.spender),
     };
   }
+  return undefined;
+}
+
+function normalizeTronExecution(
+  raw: SwapBuildDataRaw,
+  chain: ChainRef
+): SwapExecution {
+  if (isTronRawDataTx(raw.tx)) {
+    const tx = tronRawDataTxSchema.parse(raw.tx);
+    const transaction = toTronUnsignedTransaction(tx);
+    const approval = normalizeTronApproval(tx, raw);
+    return {
+      kind: "tron-transaction",
+      chain,
+      format: normalizeTronFormat(tx.format),
+      transaction,
+      ...(approval ? { approval } : {}),
+    };
+  }
+
+  const tx = tronTransferSchema.parse(raw.tx);
+  assertKind(tx.kind, ["tron_transfer"]);
+  return {
+    kind: "tron-transfer",
+    chain,
+    amount: tx.amount,
+    depositAddress: tx.depositAddress,
+    ...(tx.tokenAddress ? { tokenAddress: tx.tokenAddress } : {}),
+    ...(tx.standard ? { standard: tx.standard } : {}),
+  };
+}
+
+function isTronRawDataTx(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const format = Reflect.get(value, "format");
+  if (typeof format === "string" && format.toLowerCase() === "tron-raw-data") {
+    return true;
+  }
+  return (
+    typeof Reflect.get(value, "txID") === "string" &&
+    typeof Reflect.get(value, "raw_data_hex") === "string" &&
+    typeof Reflect.get(value, "raw_data") === "object" &&
+    Reflect.get(value, "raw_data") !== null
+  );
+}
+
+function normalizeTronFormat(format: string | undefined): string {
+  const normalized = format?.trim();
+  return normalized && normalized.length > 0 ? normalized : "tron-raw-data";
+}
+
+function toTronUnsignedTransaction(
+  value: z.infer<typeof tronUnsignedTxSchema>
+): TronUnsignedTransaction {
+  const {
+    txID,
+    raw_data,
+    raw_data_hex,
+    visible,
+    format: _format,
+    approveTxID: _approveTxID,
+    approve_raw_data: _approveRawData,
+    approve_raw_data_hex: _approveRawDataHex,
+    approveVisible: _approveVisible,
+    approve_payload: _approvePayload,
+    approveTxId: _approveTxId,
+    ...rest
+  } = value as z.infer<typeof tronRawDataTxSchema> & Record<string, unknown>;
+  return {
+    ...rest,
+    txID,
+    raw_data,
+    raw_data_hex,
+    ...(visible === undefined ? {} : { visible }),
+  };
+}
+
+function normalizeTronApproval(
+  tx: z.infer<typeof tronRawDataTxSchema>,
+  raw: SwapBuildDataRaw
+): TronApproval | undefined {
+  if (
+    typeof tx.approveTxID === "string" &&
+    tx.approveTxID.trim() &&
+    tx.approve_raw_data &&
+    typeof tx.approve_raw_data_hex === "string" &&
+    tx.approve_raw_data_hex.trim()
+  ) {
+    return {
+      transaction: {
+        txID: tx.approveTxID.trim(),
+        raw_data: tx.approve_raw_data,
+        raw_data_hex: tx.approve_raw_data_hex.trim(),
+        visible: tx.approveVisible ?? false,
+      },
+    };
+  }
+
+  if (raw.approve?.tx && isTronRawDataTx(raw.approve.tx)) {
+    const approveTx = tronUnsignedTxSchema.parse(raw.approve.tx);
+    return { transaction: toTronUnsignedTransaction(approveTx) };
+  }
+
   return undefined;
 }
 

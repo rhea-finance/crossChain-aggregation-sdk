@@ -32,7 +32,6 @@ export interface ApiClientConfig {
     | Record<string, string>
     | (() => Record<string, string> | Promise<Record<string, string>>);
   timeoutMs?: number;
-  retry?: Partial<RetryConfig>;
   logger?: SdkLogger;
 }
 
@@ -41,35 +40,19 @@ export interface ApiRequestOptions {
   idempotencyKey?: string;
 }
 
-export interface RetryConfig {
-  maxRetries: number;
-  baseDelayMs: number;
-  maxDelayMs: number;
-  jitter: boolean;
-}
-
 interface RequestOptions extends ApiRequestOptions {
   method: "GET" | "POST";
   body?: unknown;
   query?: Record<string, string | number | undefined | null>;
-  retryableOperation?: boolean;
   authenticationToken?: string;
 }
 
 interface NetworkFailureDetails extends Record<string, unknown> {
   method: RequestOptions["method"];
   path: string;
-  attempt: number;
   causeName: string;
   causeMessage: string;
 }
-
-const DEFAULT_RETRY: RetryConfig = {
-  maxRetries: 2,
-  baseDelayMs: 250,
-  maxDelayMs: 2_000,
-  jitter: true,
-};
 
 export class ApiClient {
   private readonly baseUrl: string;
@@ -96,7 +79,6 @@ export class ApiClient {
       ...options,
       method: "POST",
       body,
-      retryableOperation: true,
     });
   }
 
@@ -137,7 +119,6 @@ export class ApiClient {
     return this.request("/api/swap/order-status", "status", {
       ...options,
       method: "GET",
-      retryableOperation: true,
       query,
     });
   }
@@ -160,7 +141,6 @@ export class ApiClient {
     return this.request("/api/swap/history", "history", {
       ...options,
       method: "GET",
-      retryableOperation: true,
       query: {
         sender: params.sender,
         mode: params.mode,
@@ -202,7 +182,6 @@ export class ApiClient {
     return this.request("/get_chain_prices", "tokens", {
       ...options,
       method: "GET",
-      retryableOperation: true,
       query: { chain: chainId },
     });
   }
@@ -214,7 +193,6 @@ export class ApiClient {
     return this.request("/api/swap/supported_to_tokens", "tokens", {
       ...options,
       method: "GET",
-      retryableOperation: true,
       query: { chain: chainId },
     });
   }
@@ -229,46 +207,13 @@ export class ApiClient {
       options.idempotencyKey,
       options.authenticationToken
     );
-    const retry = this.retryConfig();
-    let attempt = 1;
-
-    for (;;) {
-      this.log({
-        level: "debug",
-        event: "api.request",
-        path,
-        stage,
-        attempt,
-      });
-      try {
-        return await this.requestOnce<T>(url, path, stage, options, headers, attempt);
-      } catch (error) {
-        const sdkError =
-          error instanceof SwapSdkError
-            ? error
-            : new SwapSdkError("HTTP_ERROR", stage, "Network request failed", {
-                cause: error,
-                retryable: true,
-              });
-        const canRetry =
-          options.retryableOperation === true &&
-          sdkError.retryable &&
-          sdkError.code !== "REQUEST_ABORTED" &&
-          attempt <= retry.maxRetries;
-        if (!canRetry) throw sdkError;
-
-        this.log({
-          level: "warn",
-          event: "api.retry",
-          path,
-          stage,
-          attempt,
-          code: sdkError.code,
-        });
-        await waitForRetry(this.retryDelay(attempt, retry), options.signal, stage);
-        attempt += 1;
-      }
-    }
+    this.log({
+      level: "debug",
+      event: "api.request",
+      path,
+      stage,
+    });
+    return this.requestOnce<T>(url, path, stage, options, headers);
   }
 
   private async requestOnce<T>(
@@ -276,8 +221,7 @@ export class ApiClient {
     path: string,
     stage: SwapErrorStage,
     options: RequestOptions,
-    headers: Record<string, string>,
-    attempt: number
+    headers: Record<string, string>
   ): Promise<T> {
     if (options.signal?.aborted) {
       throw new SwapSdkError("REQUEST_ABORTED", stage, "Request aborted", {
@@ -318,7 +262,6 @@ export class ApiClient {
         event: "api.response",
         path,
         stage,
-        attempt,
         status: response.status,
         durationMs: Date.now() - startedAt,
       });
@@ -369,12 +312,7 @@ export class ApiClient {
           { cause: error, retryable: timedOut }
         );
       }
-      const details = networkFailureDetails(
-        error,
-        options.method,
-        path,
-        attempt
-      );
+      const details = networkFailureDetails(error, options.method, path);
       console.error("SDK network request failed", {
         ...details,
         stage,
@@ -433,35 +371,6 @@ export class ApiClient {
     };
   }
 
-  private retryConfig(): RetryConfig {
-    const configured = { ...DEFAULT_RETRY, ...this.config.retry };
-    if (
-      !Number.isSafeInteger(configured.maxRetries) ||
-      configured.maxRetries < 0 ||
-      !Number.isFinite(configured.baseDelayMs) ||
-      configured.baseDelayMs < 0 ||
-      !Number.isFinite(configured.maxDelayMs) ||
-      configured.maxDelayMs < configured.baseDelayMs
-    ) {
-      throw new SwapSdkError(
-        "INVALID_REQUEST",
-        "quote",
-        "Invalid retry configuration"
-      );
-    }
-    return configured;
-  }
-
-  private retryDelay(attempt: number, retry: RetryConfig): number {
-    const exponential = Math.min(
-      retry.maxDelayMs,
-      retry.baseDelayMs * 2 ** (attempt - 1)
-    );
-    return retry.jitter
-      ? Math.min(retry.maxDelayMs, exponential * (0.5 + Math.random()))
-      : exponential;
-  }
-
   private log(entry: SdkLogEntry): void {
     try {
       this.config.logger?.log(entry);
@@ -510,8 +419,7 @@ export class ApiClient {
 function networkFailureDetails(
   error: unknown,
   method: RequestOptions["method"],
-  path: string,
-  attempt: number
+  path: string
 ): NetworkFailureDetails {
   const causeName =
     error instanceof Error && error.name.trim() ? error.name.trim() : "Error";
@@ -527,38 +435,7 @@ function networkFailureDetails(
   return {
     method,
     path,
-    attempt,
     causeName,
     causeMessage,
   };
-}
-
-function waitForRetry(
-  delayMs: number,
-  signal: AbortSignal | undefined,
-  stage: SwapErrorStage
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(
-        new SwapSdkError("REQUEST_ABORTED", stage, "Request aborted", {
-          cause: signal.reason,
-        })
-      );
-      return;
-    }
-    const onAbort = () => {
-      clearTimeout(timeout);
-      reject(
-        new SwapSdkError("REQUEST_ABORTED", stage, "Request aborted", {
-          cause: signal?.reason,
-        })
-      );
-    };
-    const timeout = setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort);
-      resolve();
-    }, delayMs);
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
 }

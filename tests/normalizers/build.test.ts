@@ -10,6 +10,7 @@ describe("normalizeBuild", () => {
     ["aptos", "aptos-entry-function"],
     ["near", "near-transaction-batch"],
     ["tron", "tron-transfer"],
+    ["tronRawData", "tron-transaction"],
     ["bitcoin", "bitcoin-transfer"],
     ["zcash", "zcash-transfer"],
     ["sui", "sui-transfer"],
@@ -287,4 +288,26 @@ describe("normalizeBuild", () => {
       })
     );
   });
+
+  it("normalizes RHEA tron-raw-data builds with embedded TRC20 approve", () => {
+    const result = normalizeBuild(buildFixtures.tronRawData);
+    expect(result.execution).toMatchObject({
+      kind: "tron-transaction",
+      chain: "tron",
+      format: "tron-raw-data",
+      transaction: {
+        txID: "ad069e0138800eeb8a8593e07f7592b302b2219e5cefe7c79f6288b628e8ea4e",
+        raw_data_hex: "0a02deadbeef",
+        visible: false,
+      },
+      approval: {
+        transaction: {
+          txID: "fb7df9df74de4d39337f5e91a4a6367a60b3138ee5626f912e9b6f15a6395f7d",
+          raw_data_hex: "0a02approve",
+          visible: false,
+        },
+      },
+    });
+  });
+
 });

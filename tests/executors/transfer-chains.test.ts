@@ -12,6 +12,7 @@ import {
   createTronExecutor,
   type TronWalletAdapter,
 } from "../../src/executors/tron";
+import type { TronUnsignedTransaction } from "../../src/types/execution";
 import {
   createZcashExecutor,
   type ZcashWalletAdapter,
@@ -106,6 +107,98 @@ describe("createTronExecutor", () => {
       status: "source-confirmed",
       txHash: "tron-native",
       raw: { confirmed: true },
+    });
+  });
+});
+
+
+describe("createTronExecutor tron-transaction", () => {
+  const mainTx: TronUnsignedTransaction = {
+    txID: "main-txid",
+    raw_data: { fee_limit: 1 },
+    raw_data_hex: "0a02main",
+    visible: false,
+  };
+  const approveTx: TronUnsignedTransaction = {
+    txID: "approve-txid",
+    raw_data: { fee_limit: 1 },
+    raw_data_hex: "0a02approve",
+    visible: false,
+  };
+  const execution: Extract<SwapExecution, { kind: "tron-transaction" }> = {
+    kind: "tron-transaction",
+    chain: "tron",
+    format: "tron-raw-data",
+    transaction: mainTx,
+    approval: { transaction: approveTx },
+  };
+
+  function adapter(): TronWalletAdapter {
+    return {
+      getChain: () => "tron",
+      isAddress: () => true,
+      sendNativeTransfer: vi.fn(async () => ({ txHash: "unused" })),
+      sendTokenTransfer: vi.fn(async () => ({ txHash: "unused" })),
+      signAndSendTransaction: vi.fn(async ({ transaction }) => ({
+        txHash: transaction.txID,
+      })),
+      waitForTransaction: vi.fn(async () => ({ status: "confirmed" })),
+    };
+  }
+
+  it("signs approve then the main tron-raw-data transaction", async () => {
+    const wallet = adapter();
+    const executor = createTronExecutor(wallet);
+    const emit = vi.fn();
+
+    await executor.validate(execution, context());
+    await expect(
+      executor.execute(execution, context({ emit }))
+    ).resolves.toMatchObject({
+      status: "submitted",
+      txHash: "main-txid",
+    });
+
+    expect(wallet.signAndSendTransaction).toHaveBeenCalledTimes(2);
+    expect(wallet.signAndSendTransaction).toHaveBeenNthCalledWith(1, {
+      transaction: approveTx,
+      signal: undefined,
+    });
+    expect(wallet.signAndSendTransaction).toHaveBeenNthCalledWith(2, {
+      transaction: mainTx,
+      signal: undefined,
+    });
+    expect(emit).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "approval-requested" })
+    );
+    expect(emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "approval-submitted",
+        txHash: "approve-txid",
+      })
+    );
+  });
+
+  it("skips approve when isApprovalRequired returns false", async () => {
+    const wallet = adapter();
+    wallet.isApprovalRequired = vi.fn(async () => false);
+    const executor = createTronExecutor(wallet);
+
+    await executor.execute(execution, context());
+    expect(wallet.signAndSendTransaction).toHaveBeenCalledTimes(1);
+    expect(wallet.signAndSendTransaction).toHaveBeenCalledWith({
+      transaction: mainTx,
+      signal: undefined,
+    });
+  });
+
+  it("rejects tron-raw-data when signAndSendTransaction is missing", async () => {
+    const wallet = adapter();
+    delete wallet.signAndSendTransaction;
+    const executor = createTronExecutor(wallet);
+    await expect(executor.validate(execution, context())).rejects.toMatchObject({
+      code: "INVALID_TRANSACTION",
+      stage: "sign",
     });
   });
 });

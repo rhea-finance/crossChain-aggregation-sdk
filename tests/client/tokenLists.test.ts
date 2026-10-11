@@ -251,7 +251,6 @@ describe("SwapClient token lists", () => {
     const client = new SwapClient({
       baseUrl: "https://swap.example",
       fetch,
-      retry: { maxRetries: 0 },
     });
 
     try {

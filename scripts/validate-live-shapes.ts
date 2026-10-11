@@ -607,7 +607,6 @@ async function main(): Promise<void> {
     baseUrl: BASE_URL,
     getAccessToken: () => accessToken,
     fetch: proxiedFetch,
-    retry: { maxRetries: 1, baseDelayMs: 400, maxDelayMs: 1500, jitter: true },
     timeoutMs: 45_000,
   });
 

@@ -40,6 +40,20 @@ export interface NearTransaction {
   actions: unknown[];
 }
 
+/** Unsigned Tron transaction as returned by node / wallet adapters (visible:false hex form). */
+export interface TronUnsignedTransaction {
+  txID: string;
+  raw_data: Record<string, unknown>;
+  raw_data_hex: string;
+  visible?: boolean;
+  /** Preserve router-specific fields (payload, fee metadata, etc.). */
+  [key: string]: unknown;
+}
+
+export interface TronApproval {
+  transaction: TronUnsignedTransaction;
+}
+
 export interface OrderReference {
   /** Preferred status identifier returned by POST /api/swap/report. */
   recordId?: string;
@@ -110,6 +124,14 @@ export type SwapExecution =
       depositAddress: string;
       tokenAddress?: string;
       standard?: string;
+    }
+  | {
+      /** RHEA / contract-call builds: unsigned TriggerSmartContract (+ optional TRC20 approve). */
+      kind: "tron-transaction";
+      chain: ChainRef;
+      format: string;
+      transaction: TronUnsignedTransaction;
+      approval?: TronApproval;
     }
   | {
       kind: "bitcoin-transfer";
