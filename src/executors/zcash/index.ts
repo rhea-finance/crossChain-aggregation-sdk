@@ -16,6 +16,7 @@ import {
   type TransactionConfirmation,
   type TransactionSubmission,
 } from "../shared";
+import { logSdkCaughtError } from "../../core/catchLog";
 
 export interface ZcashWalletAdapter extends ExecutorErrorAdapter {
   getChain(): ChainRef | Promise<ChainRef>;
@@ -68,6 +69,7 @@ export function createZcashExecutor(
           signal: context.signal,
         });
       } catch (error) {
+        logSdkCaughtError("executors/zcash/index.ts", error);
         throw mapExecutorError(
           error,
           adapter,
@@ -116,6 +118,7 @@ async function confirm(
       raw: confirmationRaw ?? raw,
     };
   } catch (error) {
+    logSdkCaughtError("executors/zcash/index.ts", error);
     throw mapExecutorError(
       error,
       adapter,

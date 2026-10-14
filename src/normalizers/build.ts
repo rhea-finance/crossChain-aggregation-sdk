@@ -21,6 +21,7 @@ import {
   evmTxSchema,
   nonEmptyStringSchema,
 } from "./schemas";
+import { logSdkCaughtError } from "../core/catchLog";
 
 const tokenSchema = z.object({
   address: z.string(),
@@ -179,6 +180,7 @@ export function normalizeBuild(
       raw,
     };
   } catch (error) {
+    logSdkCaughtError("normalizers/build.ts", error);
     if (error instanceof SwapSdkError) throw error;
     throw invalidBuild(error);
   }
@@ -357,6 +359,13 @@ function normalizeTronExecution(
 
 function isTronRawDataTx(value: unknown): boolean {
   if (typeof value !== "object" || value === null) return false;
+  const kind = Reflect.get(value, "kind");
+  if (
+    typeof kind === "string" &&
+    kind.toLowerCase() === "tron_contract"
+  ) {
+    return true;
+  }
   const format = Reflect.get(value, "format");
   if (typeof format === "string" && format.toLowerCase() === "tron-raw-data") {
     return true;

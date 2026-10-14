@@ -37,6 +37,7 @@ import {
   extractMcaWithdrawDepositAddress,
   extractMcaWithdrawSignerWallet,
 } from "./withdraw";
+import { logSdkCaughtError } from "../core/catchLog";
 
 export interface McaSwapServiceConfig {
   now?: () => number;
@@ -313,6 +314,7 @@ export class McaSwapService {
           })
         ).trim();
       } catch (error) {
+        logSdkCaughtError("mca/McaSwapService.ts", error);
         if (error instanceof SwapSdkError) throw error;
         throw new SwapSdkError(
           "SIGNING_FAILED",
@@ -413,6 +415,7 @@ export class McaSwapService {
             ...(reportRecordId ? { recordId: reportRecordId } : {}),
           };
         } catch (error) {
+          logSdkCaughtError("mca/McaSwapService.ts", error);
           const warning: SwapWarning = {
             code: "REPORT_FAILED",
             message: "MCA withdraw submitted but report failed",
@@ -451,6 +454,7 @@ export class McaSwapService {
       }
       return result;
     } catch (error) {
+      logSdkCaughtError("mca/McaSwapService.ts", error);
       const sdkError = asSwapSdkError(error, "submit");
       emit({ type: "failed", executionId, error: sdkError });
       throw sdkError;
@@ -466,6 +470,7 @@ export class McaSwapService {
     try {
       identityKey = (await provider.getIdentityKey()).trim();
     } catch (error) {
+      logSdkCaughtError("mca/McaSwapService.ts", error);
       if (error instanceof SwapSdkError) throw error;
       throw new SwapSdkError(
         "SIGNING_FAILED",

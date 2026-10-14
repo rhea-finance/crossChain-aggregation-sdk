@@ -5,6 +5,7 @@ import type {
 import { SwapSdkError } from "../core/errors";
 import type { NearTransaction } from "../types/execution";
 import { parseUnits } from "../utils/units";
+import { logSdkCaughtError } from "../core/catchLog";
 
 export function extractMcaWithdrawBusiness(
   preview: unknown
@@ -249,6 +250,7 @@ function normalizeDeposit(value: unknown): string {
   try {
     return parseUnits(decimal, 24);
   } catch (error) {
+    logSdkCaughtError("mca/withdraw.ts", error);
     throw new SwapSdkError(
       "INVALID_API_RESPONSE",
       "build",

@@ -63,6 +63,7 @@ import type {
   SwapTokenListItem,
   TokenListRequest,
 } from "../types/tokens";
+import { logSdkCaughtError, setSdkCatchLogging } from "../core/catchLog";
 
 export interface SwapClientConfig extends ApiClientConfig {
   reportMode?: "auto" | "manual" | "disabled";
@@ -98,6 +99,9 @@ export class SwapClient {
   >();
 
   constructor(config: SwapClientConfig) {
+    if (config.debugCatchLogging !== undefined) {
+      setSdkCatchLogging(config.debugCatchLogging);
+    }
     this.config = config;
     this.api = new ApiClient(config);
     this.registry = new ExecutorRegistry(config.executors ?? []);
@@ -273,18 +277,72 @@ export class SwapClient {
     };
 
     try {
+      let activeBuild = build;
       const executor = this.registry.get(build.execution.kind);
+      if (
+        build.execution.kind === "tron-transaction" &&
+        build.execution.approval &&
+        !build.request
+      ) {
+        throw new SwapSdkError(
+          "INVALID_REQUEST",
+          "sign",
+          "Tron approval builds require the original build request to rebuild after approval"
+        );
+      }
+      const needsTronRebuild =
+        build.execution.kind === "tron-transaction" &&
+        Boolean(build.execution.approval) &&
+        Boolean(build.request);
       const context = {
         executionId: build.executionId,
         signal: input.signal,
         waitFor: input.waitFor ?? ("submitted" as const),
         emit,
         ...(input.beforeSign ? { beforeSign: input.beforeSign } : {}),
+        ...(needsTronRebuild
+          ? {
+              refreshTronExecution: async () => {
+                const request = build.request;
+                if (!request) {
+                  throw new SwapSdkError(
+                    "INVALID_REQUEST",
+                    "build",
+                    "Missing build request to rebuild Tron swap after approval"
+                  );
+                }
+                const raw = await this.api.build(request, {
+                  signal: input.signal,
+                });
+                const refreshed = normalizeBuild(
+                  raw,
+                  build.executionId,
+                  request
+                );
+                if (refreshed.execution.kind !== "tron-transaction") {
+                  throw new SwapSdkError(
+                    "INVALID_API_RESPONSE",
+                    "build",
+                    "Rebuilt Tron swap must return a tron-transaction execution"
+                  );
+                }
+                if (refreshed.execution.approval) {
+                  throw new SwapSdkError(
+                    "INVALID_API_RESPONSE",
+                    "build",
+                    "Tron approval is still required after rebuild"
+                  );
+                }
+                activeBuild = refreshed;
+                return refreshed.execution;
+              },
+            }
+          : {}),
       };
       await executor.validate(build.execution, context);
       emit({ type: "signing-requested", executionId: build.executionId });
       const chainResult = await executor.execute(build.execution, context);
-      let orderId = chainResult.orderId ?? build.order?.orderId;
+      let orderId = chainResult.orderId ?? activeBuild.order?.orderId;
 
       if (chainResult.signature) {
         if (build.execution.kind !== "evm-signature") {
@@ -319,39 +377,40 @@ export class SwapClient {
       }
 
       const result: SwapExecutionResult = {
-        executionId: build.executionId,
+        executionId: activeBuild.executionId,
         status: chainResult.status,
-        router: build.router,
+        router: activeBuild.router,
         ...(chainResult.txHash ? { txHash: chainResult.txHash } : {}),
         ...(chainResult.txHashes ? { txHashes: chainResult.txHashes } : {}),
         ...(orderId ? { orderId } : {}),
-        ...(build.deposit?.depositAddress
-          ? { depositAddress: build.deposit.depositAddress }
+        ...(activeBuild.deposit?.depositAddress
+          ? { depositAddress: activeBuild.deposit.depositAddress }
           : {}),
         report: { status: "skipped" },
-        raw: chainResult.raw ?? build.raw,
+        raw: chainResult.raw ?? activeBuild.raw,
       };
 
       emit({
         type: "submitted",
-        executionId: build.executionId,
+        executionId: activeBuild.executionId,
         ...(chainResult.txHash ? { txHash: chainResult.txHash } : {}),
         ...(orderId ? { orderId } : {}),
       });
       if (chainResult.status === "source-confirmed") {
         emit({
           type: "source-confirmed",
-          executionId: build.executionId,
+          executionId: activeBuild.executionId,
         });
       }
 
       const waitMode = input.waitFor ?? "submitted";
       const requiresTrackedStatus =
-        build.isCrossChain || build.request?.confidentiality === "basic";
+        activeBuild.isCrossChain ||
+        activeBuild.request?.confidentiality === "basic";
 
-      const reportRequest = this.createReportRequest(build, result);
+      const reportRequest = this.createReportRequest(activeBuild, result);
       if (reportRequest) {
-        this.reportRequests.set(build.executionId, reportRequest);
+        this.reportRequests.set(activeBuild.executionId, reportRequest);
       }
       const mustReportForStatus =
         requiresTrackedStatus &&
@@ -374,24 +433,29 @@ export class SwapClient {
             ...(reportRecordId ? { recordId: reportRecordId } : {}),
           };
         } catch (error) {
+          logSdkCaughtError("client/SwapClient.ts", error);
           const warning: SwapWarning = {
             code: "REPORT_FAILED",
             message: "Swap submitted but report failed",
             cause: error,
           };
           result.report = { status: "failed", warning };
-          emit({ type: "warning", executionId: build.executionId, warning });
+          emit({
+            type: "warning",
+            executionId: activeBuild.executionId,
+            warning,
+          });
         }
       }
       const shouldPollOrderStatus = shouldPollSwapOrderStatus({
         waitFor: waitMode,
-        isCrossChain: build.isCrossChain,
-        confidentiality: build.request?.confidentiality,
+        isCrossChain: activeBuild.isCrossChain,
+        confidentiality: activeBuild.request?.confidentiality,
         reportRecordId,
       });
       const statusLookup = resolveOrderStatusLookup({
         recordId: reportRecordId ?? result.report?.recordId,
-        router: build.order?.router ?? build.router,
+        router: activeBuild.order?.router ?? activeBuild.router,
       });
       if (shouldPollOrderStatus && !statusLookup) {
         throw new SwapSdkError(
@@ -400,8 +464,8 @@ export class SwapClient {
           "Swap submitted, but the report response did not include an id to query",
           {
             details: {
-              executionId: build.executionId,
-              router: build.router,
+              executionId: activeBuild.executionId,
+              router: activeBuild.router,
             },
           }
         );
@@ -424,6 +488,7 @@ export class SwapClient {
 
       return result;
     } catch (error) {
+      logSdkCaughtError("client/SwapClient.ts", error);
       const sdkError = asSwapSdkError(error, "broadcast");
       emit({ type: "failed", executionId: build.executionId, error: sdkError });
       throw sdkError;

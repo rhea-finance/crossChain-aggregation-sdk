@@ -1,3 +1,5 @@
+import { logSdkCaughtError } from "./catchLog";
+
 export type SwapErrorCode =
   | "HTTP_ERROR"
   | "API_ERROR"
@@ -70,6 +72,7 @@ export function asSwapSdkError(
   error: unknown,
   stage: SwapErrorStage
 ): SwapSdkError {
+  logSdkCaughtError(`asSwapSdkError:${stage}`, error);
   if (error instanceof SwapSdkError) return error;
 
   const message = error instanceof Error ? error.message : String(error);

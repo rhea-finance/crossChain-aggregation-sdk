@@ -17,6 +17,7 @@ import {
   type TransactionConfirmation,
   type TransactionSubmission,
 } from "../shared";
+import { logSdkCaughtError } from "../../core/catchLog";
 
 type BitcoinExecution = Extract<
   SwapExecution,
@@ -75,6 +76,7 @@ export function createBitcoinExecutor(
           signal: context.signal,
         });
       } catch (error) {
+        logSdkCaughtError("executors/bitcoin/index.ts", error);
         throw mapExecutorError(
           error,
           adapter,
@@ -130,6 +132,7 @@ async function confirm(
       raw: confirmationRaw ?? submission.raw,
     };
   } catch (error) {
+    logSdkCaughtError("executors/bitcoin/index.ts", error);
     throw mapExecutorError(
       error,
       adapter,

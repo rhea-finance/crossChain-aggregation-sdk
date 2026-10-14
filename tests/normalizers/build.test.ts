@@ -310,4 +310,35 @@ describe("normalizeBuild", () => {
     });
   });
 
+  it("normalizes kind tron_contract builds", () => {
+    const result = normalizeBuild({
+      ...buildFixtures.tronRawData,
+      needsApprove: false,
+      approve: null,
+      tx: {
+        kind: "tron_contract",
+        type: "TRON",
+        chainId: "tron",
+        format: "tron-raw-data",
+        txID: "contract-txid",
+        visible: false,
+        raw_data: { fee_limit: 1, expiration: Date.now() + 60_000 },
+        raw_data_hex: "0a02contract",
+      },
+    });
+    expect(result.execution).toMatchObject({
+      kind: "tron-transaction",
+      chain: "tron",
+      format: "tron-raw-data",
+      transaction: {
+        txID: "contract-txid",
+        raw_data_hex: "0a02contract",
+        visible: false,
+      },
+    });
+    expect(
+      (result.execution as { approval?: unknown }).approval
+    ).toBeUndefined();
+  });
+
 });

@@ -1,6 +1,7 @@
 export * from "./api/ApiClient";
 export * from "./api/rawTypes";
 export * from "./client/SwapClient";
+export * from "./core/catchLog";
 export * from "./core/errors";
 export * from "./core/lifecycle";
 export * from "./core/logger";

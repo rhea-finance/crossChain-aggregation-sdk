@@ -15,6 +15,7 @@ import {
   type TransactionConfirmation,
   type TransactionSubmission,
 } from "../shared";
+import { logSdkCaughtError } from "../../core/catchLog";
 
 export interface AptosWalletAdapter extends ExecutorErrorAdapter {
   getChain(): ChainRef | Promise<ChainRef>;
@@ -61,6 +62,7 @@ export function createAptosExecutor(
           { signal: context.signal }
         );
       } catch (error) {
+        logSdkCaughtError("executors/aptos/index.ts", error);
         throw mapExecutorError(
           error,
           adapter,
@@ -101,6 +103,7 @@ async function confirm(
       raw: confirmationRaw ?? submission.raw,
     };
   } catch (error) {
+    logSdkCaughtError("executors/aptos/index.ts", error);
     throw mapExecutorError(
       error,
       adapter,

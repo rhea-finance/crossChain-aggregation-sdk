@@ -22,6 +22,13 @@ export interface ExecutionContext {
   waitFor: WaitMode;
   emit(event: SwapLifecycleEvent): void;
   beforeSign?: (preview: SignRequestPreview) => void | Promise<void>;
+  /**
+   * After a Tron TRC20 approve is confirmed, rebuild the main `tron-transaction`
+   * (fresh ref block / expiration / Rango requestId). Provided by SwapClient.
+   */
+  refreshTronExecution?: () => Promise<
+    Extract<SwapExecution, { kind: "tron-transaction" }>
+  >;
 }
 
 export interface MessageSignOptions {

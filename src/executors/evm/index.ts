@@ -20,6 +20,7 @@ import {
   type TransactionConfirmation,
   type TransactionSubmission,
 } from "../shared";
+import { logSdkCaughtError } from "../../core/catchLog";
 
 type EvmExecution = Extract<
   SwapExecution,
@@ -106,6 +107,7 @@ async function executeSignature(
         : {}),
     };
   } catch (error) {
+    logSdkCaughtError("executors/evm/index.ts", error);
     throw mapExecutorError(
       error,
       adapter,
@@ -134,6 +136,7 @@ async function executeTransaction(
       signal: context.signal,
     });
   } catch (error) {
+    logSdkCaughtError("executors/evm/index.ts", error);
     throw mapExecutorError(
       error,
       adapter,
@@ -158,6 +161,7 @@ async function executeApprovalIfRequired(
         ? await adapter.isApprovalRequired(execution.approval)
         : true;
     } catch (error) {
+      logSdkCaughtError("executors/evm/index.ts", error);
       throw mapExecutorError(
         error,
         adapter,
@@ -204,6 +208,7 @@ async function sendApproval(
       message: "EVM approval transaction failed",
     });
   } catch (error) {
+    logSdkCaughtError("executors/evm/index.ts", error);
     throw mapExecutorError(
       error,
       adapter,
@@ -241,6 +246,7 @@ async function confirmIfRequested(
       raw: confirmationRaw ?? submission.raw,
     };
   } catch (error) {
+    logSdkCaughtError("executors/evm/index.ts", error);
     throw mapExecutorError(
       error,
       adapter,

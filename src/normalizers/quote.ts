@@ -11,6 +11,7 @@ import type {
   RouteSummary,
 } from "../types/quote";
 import { toApiAssetAddress, toApiChain } from "./chain";
+import { logSdkCaughtError } from "../core/catchLog";
 
 const DEFAULT_QUOTE_WAITING_TIME_MS = 3000;
 const DEFAULT_SAME_CHAIN_TIMEOUT_MS = 500;
@@ -35,6 +36,9 @@ export function serializeQuoteRequest(
       request.sameChainTimeoutMs ?? DEFAULT_SAME_CHAIN_TIMEOUT_MS,
     crossChainTimeoutMs:
       request.crossChainTimeoutMs ?? DEFAULT_CROSS_CHAIN_TIMEOUT_MS,
+    ...(request.excludeDexs !== undefined
+      ? { excludeDexs: [...request.excludeDexs] }
+      : {}),
     ...(request.confidentiality
       ? { confidentiality: request.confidentiality }
       : {}),
@@ -215,6 +219,7 @@ function validateResponseAmount(value: string, field: string): string {
   try {
     return assertBaseUnitAmount(value);
   } catch (error) {
+    logSdkCaughtError("normalizers/quote.ts", error);
     throw invalidQuote(`Quote response has invalid ${field}`, error);
   }
 }

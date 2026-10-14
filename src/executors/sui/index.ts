@@ -16,6 +16,7 @@ import {
   type TransactionConfirmation,
   type TransactionSubmission,
 } from "../shared";
+import { logSdkCaughtError } from "../../core/catchLog";
 
 export interface SuiWalletAdapter extends ExecutorErrorAdapter {
   getChain(): ChainRef | Promise<ChainRef>;
@@ -78,6 +79,7 @@ export function createSuiExecutor(
           signal: context.signal,
         });
       } catch (error) {
+        logSdkCaughtError("executors/sui/index.ts", error);
         throw mapExecutorError(
           error,
           adapter,
@@ -118,6 +120,7 @@ async function confirm(
       raw: confirmationRaw ?? submission.raw,
     };
   } catch (error) {
+    logSdkCaughtError("executors/sui/index.ts", error);
     throw mapExecutorError(
       error,
       adapter,

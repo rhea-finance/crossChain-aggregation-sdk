@@ -113,16 +113,23 @@ describe("createTronExecutor", () => {
 
 
 describe("createTronExecutor tron-transaction", () => {
+  const futureExpiration = Date.now() + 60_000;
   const mainTx: TronUnsignedTransaction = {
     txID: "main-txid",
-    raw_data: { fee_limit: 1 },
+    raw_data: { fee_limit: 1, expiration: futureExpiration },
     raw_data_hex: "0a02main",
     visible: false,
   };
   const approveTx: TronUnsignedTransaction = {
     txID: "approve-txid",
-    raw_data: { fee_limit: 1 },
+    raw_data: { fee_limit: 1, expiration: futureExpiration },
     raw_data_hex: "0a02approve",
+    visible: false,
+  };
+  const refreshedMainTx: TronUnsignedTransaction = {
+    txID: "refreshed-main-txid",
+    raw_data: { fee_limit: 1, expiration: futureExpiration },
+    raw_data_hex: "0a02refreshed",
     visible: false,
   };
   const execution: Extract<SwapExecution, { kind: "tron-transaction" }> = {
@@ -131,6 +138,15 @@ describe("createTronExecutor tron-transaction", () => {
     format: "tron-raw-data",
     transaction: mainTx,
     approval: { transaction: approveTx },
+  };
+  const refreshedExecution: Extract<
+    SwapExecution,
+    { kind: "tron-transaction" }
+  > = {
+    kind: "tron-transaction",
+    chain: "tron",
+    format: "tron-raw-data",
+    transaction: refreshedMainTx,
   };
 
   function adapter(): TronWalletAdapter {
@@ -146,26 +162,28 @@ describe("createTronExecutor tron-transaction", () => {
     };
   }
 
-  it("signs approve then the main tron-raw-data transaction", async () => {
+  it("signs approve, rebuilds, then signs the refreshed main transaction", async () => {
     const wallet = adapter();
     const executor = createTronExecutor(wallet);
     const emit = vi.fn();
+    const refreshTronExecution = vi.fn(async () => refreshedExecution);
 
     await executor.validate(execution, context());
     await expect(
-      executor.execute(execution, context({ emit }))
+      executor.execute(execution, context({ emit, refreshTronExecution }))
     ).resolves.toMatchObject({
       status: "submitted",
-      txHash: "main-txid",
+      txHash: "refreshed-main-txid",
     });
 
+    expect(refreshTronExecution).toHaveBeenCalledTimes(1);
     expect(wallet.signAndSendTransaction).toHaveBeenCalledTimes(2);
     expect(wallet.signAndSendTransaction).toHaveBeenNthCalledWith(1, {
       transaction: approveTx,
       signal: undefined,
     });
     expect(wallet.signAndSendTransaction).toHaveBeenNthCalledWith(2, {
-      transaction: mainTx,
+      transaction: refreshedMainTx,
       signal: undefined,
     });
     expect(emit).toHaveBeenCalledWith(
@@ -179,6 +197,16 @@ describe("createTronExecutor tron-transaction", () => {
     );
   });
 
+  it("rejects approve flow when refreshTronExecution is missing", async () => {
+    const wallet = adapter();
+    const executor = createTronExecutor(wallet);
+    await expect(executor.execute(execution, context())).rejects.toMatchObject({
+      code: "INVALID_TRANSACTION",
+      stage: "sign",
+    });
+    expect(wallet.signAndSendTransaction).toHaveBeenCalledTimes(1);
+  });
+
   it("skips approve when isApprovalRequired returns false", async () => {
     const wallet = adapter();
     wallet.isApprovalRequired = vi.fn(async () => false);
@@ -190,6 +218,25 @@ describe("createTronExecutor tron-transaction", () => {
       transaction: mainTx,
       signal: undefined,
     });
+  });
+
+  it("rejects expired main transactions before signing", async () => {
+    const wallet = adapter();
+    const executor = createTronExecutor(wallet);
+    const expired: Extract<SwapExecution, { kind: "tron-transaction" }> = {
+      kind: "tron-transaction",
+      chain: "tron",
+      format: "tron-raw-data",
+      transaction: {
+        ...mainTx,
+        raw_data: { fee_limit: 1, expiration: Date.now() - 1_000 },
+      },
+    };
+    await expect(executor.execute(expired, context())).rejects.toMatchObject({
+      code: "INVALID_TRANSACTION",
+      stage: "sign",
+    });
+    expect(wallet.signAndSendTransaction).not.toHaveBeenCalled();
   });
 
   it("rejects tron-raw-data when signAndSendTransaction is missing", async () => {

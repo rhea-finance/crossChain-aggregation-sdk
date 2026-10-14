@@ -21,6 +21,7 @@ import {
   type TransactionConfirmation,
   type TransactionSubmission,
 } from "../shared";
+import { logSdkCaughtError } from "../../core/catchLog";
 
 type TronTransferExecution = Extract<SwapExecution, { kind: "tron-transfer" }>;
 type TronTransactionExecution = Extract<
@@ -142,6 +143,7 @@ async function executeTronTransfer(
           signal: context.signal,
         });
   } catch (error) {
+    logSdkCaughtError("executors/tron/index.ts", error);
     throw mapExecutorError(
       error,
       adapter,
@@ -153,25 +155,62 @@ async function executeTronTransfer(
   return confirm(adapter, submission, context, "transfer");
 }
 
+const TRON_TX_FRESH_MS = 15_000;
+
 async function executeTronTransaction(
   adapter: TronWalletAdapter,
   execution: TronTransactionExecution,
   context: ExecutionContext
 ): Promise<ChainExecutionResult> {
-  await executeApprovalIfRequired(adapter, execution, context);
+  const didApprove = await executeApprovalIfRequired(
+    adapter,
+    execution,
+    context
+  );
 
-  await requestSignApproval(context, execution.chain, execution.kind, {
-    format: execution.format,
-    txID: execution.transaction.txID,
+  let mainExecution = execution;
+  if (didApprove) {
+    if (!context.refreshTronExecution) {
+      throw invalid(
+        "Tron approval requires rebuild via refreshTronExecution before signing the main transaction"
+      );
+    }
+    try {
+      mainExecution = await context.refreshTronExecution();
+    } catch (error) {
+      logSdkCaughtError("executors/tron/index.ts", error);
+      throw mapExecutorError(
+        error,
+        adapter,
+        "sign",
+        "INVALID_TRANSACTION",
+        "Failed to rebuild Tron swap after approval"
+      );
+    }
+    if (mainExecution.kind !== "tron-transaction") {
+      throw invalid("Rebuilt Tron execution must be tron-transaction");
+    }
+    if (mainExecution.approval) {
+      throw invalid("Tron approval is still required after rebuild");
+    }
+    assertTronUnsignedTransaction(mainExecution.transaction, "transaction");
+  }
+
+  assertTronTransactionFresh(mainExecution.transaction);
+
+  await requestSignApproval(context, mainExecution.chain, mainExecution.kind, {
+    format: mainExecution.format,
+    txID: mainExecution.transaction.txID,
   });
 
   let submission: TransactionSubmission;
   try {
     submission = await requireSignAndSend(adapter)({
-      transaction: execution.transaction,
+      transaction: mainExecution.transaction,
       signal: context.signal,
     });
   } catch (error) {
+    logSdkCaughtError("executors/tron/index.ts", error);
     throw mapExecutorError(
       error,
       adapter,
@@ -184,12 +223,13 @@ async function executeTronTransaction(
   return confirm(adapter, submission, context, "transaction");
 }
 
+/** @returns true when an approval was submitted and confirmed on-chain */
 async function executeApprovalIfRequired(
   adapter: TronWalletAdapter,
   execution: TronTransactionExecution,
   context: ExecutionContext
-): Promise<void> {
-  if (!execution.approval) return;
+): Promise<boolean> {
+  if (!execution.approval) return false;
 
   let approvalRequired: boolean;
   try {
@@ -197,6 +237,7 @@ async function executeApprovalIfRequired(
       ? await adapter.isApprovalRequired(execution.approval)
       : true;
   } catch (error) {
+    logSdkCaughtError("executors/tron/index.ts", error);
     throw mapExecutorError(
       error,
       adapter,
@@ -205,7 +246,9 @@ async function executeApprovalIfRequired(
       "Failed to determine Tron approval requirement"
     );
   }
-  if (!approvalRequired) return;
+  if (!approvalRequired) return false;
+
+  assertTronTransactionFresh(execution.approval.transaction);
 
   context.emit({
     type: "approval-requested",
@@ -232,7 +275,9 @@ async function executeApprovalIfRequired(
       stage: "approve",
       message: "Tron approval transaction failed",
     });
+    return true;
   } catch (error) {
+    logSdkCaughtError("executors/tron/index.ts", error);
     throw mapExecutorError(
       error,
       adapter,
@@ -269,6 +314,21 @@ function assertTronUnsignedTransaction(
     transaction.raw_data === null
   ) {
     throw invalid(`Missing Tron ${label}.raw_data`);
+  }
+  if (typeof transaction.visible !== "boolean") {
+    throw invalid(`Missing Tron ${label}.visible`);
+  }
+}
+
+function assertTronTransactionFresh(
+  transaction: TronUnsignedTransaction
+): void {
+  const expiration = Number(transaction.raw_data?.expiration);
+  if (
+    !Number.isFinite(expiration) ||
+    expiration <= Date.now() + TRON_TX_FRESH_MS
+  ) {
+    throw invalid("Tron transaction expired; please rebuild the swap.");
   }
 }
 
@@ -311,6 +371,7 @@ async function confirm(
       raw: confirmationRaw ?? submission.raw,
     };
   } catch (error) {
+    logSdkCaughtError("executors/tron/index.ts", error);
     throw mapExecutorError(
       error,
       adapter,

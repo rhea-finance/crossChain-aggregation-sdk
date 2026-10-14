@@ -16,6 +16,7 @@ import {
   type ExecutorErrorAdapter,
   type TransactionConfirmation,
 } from "../shared";
+import { logSdkCaughtError } from "../../core/catchLog";
 
 export interface NearWalletAdapter extends ExecutorErrorAdapter {
   getChain(): ChainRef | Promise<ChainRef>;
@@ -69,6 +70,7 @@ export function createNearExecutor(
           { signal: context.signal }
         );
       } catch (error) {
+        logSdkCaughtError("executors/near/index.ts", error);
         throw mapExecutorError(
           error,
           adapter,
@@ -120,6 +122,7 @@ async function confirm(
       raw: confirmationRaw ?? submission.raw,
     };
   } catch (error) {
+    logSdkCaughtError("executors/near/index.ts", error);
     throw mapExecutorError(
       error,
       adapter,

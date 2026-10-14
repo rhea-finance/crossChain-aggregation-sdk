@@ -316,6 +316,15 @@ const quote = await client.quote(quoteRequest);
 
 `quote()` calls `POST /api/v2/swap/quote`. The frontend can configure the Near Intents wait plus the same-chain and cross-chain route timeouts on every `QuoteRequest`. The SDK sends the defaults shown above when fields are omitted.
 
+Pass `excludeDexs` as a top-level string array to exclude routing providers. Use the API's exact lowercase provider identifiers, and pass the same array when refreshing a quote. This also applies to MCA deposit and withdrawal quotes. Omit the field when no exclusions are needed:
+
+```ts
+const filteredQuote = await client.quote({
+  ...quoteRequest,
+  excludeDexs: ["lifi", "rango"],
+});
+```
+
 Set `confidentiality: "basic"` to use the confidential 1Click route. The SDK preserves it through quote and build, and includes it in automatic or manual report payloads. Omit the field for public swaps:
 
 ```ts
@@ -473,6 +482,7 @@ Terminal statuses are `completed`, `failed`, `refunded`, and `expired`.
 | `quoteWaitingTimeMs` | `number` | No | Near Intents quote wait in milliseconds. Must be a non-negative integer. Default: `3000`. See [Configure quote timing](#331-configure-quote-timing). |
 | `sameChainTimeoutMs` | `number` | No | Same-chain route quote timeout in milliseconds. Must be a non-negative integer. Default: `500`. |
 | `crossChainTimeoutMs` | `number` | No | Cross-chain route quote timeout in milliseconds. Must be a non-negative integer. Default: `3000`. |
+| `excludeDexs` | `string[]` | No | Routing provider identifiers to exclude, for example `["lifi", "rango"]`. Omit or pass `[]` for no exclusions. |
 | `confidentiality` | `"basic"` | No | Enables the confidential 1Click route and marks the resulting report. Omit for public swaps. |
 | `sender` | `string` | Yes | Sender address on the source chain. |
 | `recipient` | `string` | No | Recipient address on the destination chain. Cross-chain requests should normally provide it explicitly. |

@@ -22,6 +22,7 @@ import {
   SwapReportDataRaw,
   SwapReportRequestRaw,
 } from "./rawTypes";
+import { logSdkCaughtError, setSdkCatchLogging } from "../core/catchLog";
 
 export interface ApiClientConfig {
   baseUrl: string;
@@ -33,6 +34,8 @@ export interface ApiClientConfig {
     | (() => Record<string, string> | Promise<Record<string, string>>);
   timeoutMs?: number;
   logger?: SdkLogger;
+  /** Dump catch-site errors to console. Default false. */
+  debugCatchLogging?: boolean;
 }
 
 export interface ApiRequestOptions {
@@ -60,6 +63,9 @@ export class ApiClient {
 
   constructor(private readonly config: ApiClientConfig) {
     this.baseUrl = config.baseUrl.replace(/\/$/, "");
+    if (config.debugCatchLogging !== undefined) {
+      setSdkCatchLogging(config.debugCatchLogging);
+    }
     const fetchImpl = config.fetch ?? globalThis.fetch;
     if (typeof fetchImpl !== "function") {
       throw new SwapSdkError(
@@ -303,6 +309,7 @@ export class ApiClient {
 
       return parsed.data as T;
     } catch (error) {
+      logSdkCaughtError("api/ApiClient.ts", error);
       if (error instanceof SwapSdkError) throw error;
       if (controller.signal.aborted) {
         throw new SwapSdkError(
@@ -387,6 +394,7 @@ export class ApiClient {
     try {
       return text ? JSON.parse(text) : {};
     } catch (error) {
+      logSdkCaughtError("api/ApiClient.ts", error);
       throw new SwapSdkError(
         status >= 400 ? "HTTP_ERROR" : "INVALID_API_RESPONSE",
         stage,

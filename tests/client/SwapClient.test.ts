@@ -90,6 +90,35 @@ describe("SwapClient quote and build", () => {
     expect(buildRequest).not.toHaveProperty("crossChainTimeoutMs");
   });
 
+  it.each([undefined, [], ["lifi", "rango"]])(
+    "carries provider exclusions %j from quote through build",
+    async (excludeDexs) => {
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValueOnce(response(quoteRaw))
+        .mockResolvedValueOnce(response(buildFixtures.bitcoin));
+      const client = new SwapClient({
+        baseUrl: "https://swap.example",
+        fetch,
+      });
+
+      const quote = await client.quote({ ...request, excludeDexs });
+      // Caller changes after quoting must not alter the build request.
+      excludeDexs?.push("okx");
+      await client.buildSwap({ quote });
+
+      const quoteBody = JSON.parse(String(fetch.mock.calls[0]?.[1]?.body));
+      const buildBody = JSON.parse(String(fetch.mock.calls[1]?.[1]?.body));
+      if (excludeDexs === undefined) {
+        expect(quoteBody).not.toHaveProperty("excludeDexs");
+        expect(buildBody).not.toHaveProperty("excludeDexs");
+      } else {
+        expect(quoteBody.excludeDexs).toEqual(excludeDexs.slice(0, -1));
+        expect(buildBody.excludeDexs).toEqual(quoteBody.excludeDexs);
+      }
+    }
+  );
+
   it("carries confidentiality from quote through build", async () => {
     const fetch = vi
       .fn<typeof globalThis.fetch>()

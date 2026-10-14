@@ -20,6 +20,7 @@ import {
   type TransactionConfirmation,
   type TransactionSubmission,
 } from "../shared";
+import { logSdkCaughtError } from "../../core/catchLog";
 
 type SolanaExecution = Extract<
   SwapExecution,
@@ -80,6 +81,7 @@ export function createSolanaExecutor(
           signal: context.signal,
         });
       } catch (error) {
+        logSdkCaughtError("executors/solana/index.ts", error);
         throw mapExecutorError(
           error,
           adapter,
@@ -122,6 +124,7 @@ async function confirm(
       raw: confirmationRaw ?? submission.raw,
     };
   } catch (error) {
+    logSdkCaughtError("executors/solana/index.ts", error);
     throw mapExecutorError(
       error,
       adapter,

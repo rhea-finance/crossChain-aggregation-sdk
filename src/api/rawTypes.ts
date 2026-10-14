@@ -77,6 +77,8 @@ export interface SwapQuoteRequestRaw {
   quoteWaitingTimeMs?: number;
   sameChainTimeoutMs?: number;
   crossChainTimeoutMs?: number;
+  /** Routing provider identifiers to exclude from quote selection. */
+  excludeDexs?: string[];
   /** Enables the confidential 1Click route. */
   confidentiality?: "basic";
   sender: string;

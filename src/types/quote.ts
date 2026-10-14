@@ -21,6 +21,8 @@ export interface QuoteRequest {
   sameChainTimeoutMs?: number;
   /** Cross-chain route quote timeout in milliseconds. Defaults to 3000. */
   crossChainTimeoutMs?: number;
+  /** Routing provider identifiers to exclude, for example ["lifi", "rango"]. */
+  excludeDexs?: string[];
   /** Enables the confidential 1Click route. */
   confidentiality?: "basic";
   sender: string;

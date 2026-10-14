@@ -93,12 +93,16 @@ function rawQuote(overrides: Record<string, unknown> = {}) {
 
 describe("MCA quote serialization", () => {
   it("serializes deposit signer and collateral fields", () => {
-    const raw = serializeMcaQuoteRequest(depositRequest, depositSigner);
+    const raw = serializeMcaQuoteRequest(
+      { ...depositRequest, excludeDexs: ["lifi", "rango"] },
+      depositSigner
+    );
 
     expect(raw).toMatchObject({
       quoteWaitingTimeMs: 3000,
       sameChainTimeoutMs: 500,
       crossChainTimeoutMs: 3000,
+      excludeDexs: ["lifi", "rango"],
       mca: {
         flow: "deposit",
         mcaAccountId: "mca.near",
@@ -109,8 +113,12 @@ describe("MCA quote serialization", () => {
   });
 
   it("serializes withdraw collateral and proof signatures", () => {
-    const raw = serializeMcaQuoteRequest(withdrawRequest, withdrawSigner);
+    const raw = serializeMcaQuoteRequest(
+      { ...withdrawRequest, excludeDexs: ["lifi", "rango"] },
+      withdrawSigner
+    );
 
+    expect(raw.excludeDexs).toEqual(["lifi", "rango"]);
     expect(raw.mca).toEqual({
       flow: "withdraw",
       mcaAccountId: "mca.near",

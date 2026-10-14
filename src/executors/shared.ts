@@ -9,6 +9,7 @@ import type {
   MessageSignOptions,
 } from "../core/registry";
 import type { ChainRef } from "../types/chain";
+import { logSdkCaughtError } from "../core/catchLog";
 
 export interface TransactionSubmission {
   txHash: string;
@@ -99,6 +100,7 @@ export function mapExecutorError(
   code: SwapErrorCode,
   message: string
 ): SwapSdkError {
+  logSdkCaughtError(`executor.mapExecutorError:${stage}:${code}`, error);
   if (error instanceof SwapSdkError) return error;
   if (isUserRejection(error, adapter)) {
     return new SwapSdkError("USER_REJECTED", stage, "User rejected the request", {
